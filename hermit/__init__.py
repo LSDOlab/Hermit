@@ -14,9 +14,7 @@ shadow the public function of the same name. ``import hermit.solve`` would other
 rebind ``hermit.solve`` from the function to the module -- silently, with no error.
 """
 
-# The release branch tracks the pre-1.0 public preview.  Publish the first
-# stable release as 1.0.0 rather than reusing this version.
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 from . import _compat as _compat  # noqa: E402  (DOLFINx 0.9 / 0.11 shims)
 from . import _ufl_compat as _ufl_compat  # noqa: E402

@@ -117,4 +117,4 @@ GNU Lesser General Public License v3.0 or later. See `LICENSE.txt`.
 
 ## Acknowledgments
 
-The development of this software was supported, in part, by the Air Force Research Laboratory through the Collaborative Center for the Design and Research Of InterDisciplinary Systems (CC DROIDS). Distribution Statement A. Approved for public release: distribution is unlimited. Approved AFRL-2026-1633 17-09-2026. This authorization applies to Git commit XXXXX.
+The development of this software was supported, in part, by the Air Force Research Laboratory through the Collaborative Center for the Design and Research Of InterDisciplinary Systems (CC DROIDS). Distribution Statement A. Approved for public release: distribution is unlimited. Approved AFRL-2026-1633 17-09-2026. This authorization applies to Git commit ee5a55f0afaa04ad25f651a1f05738c9a4bbd08f.
