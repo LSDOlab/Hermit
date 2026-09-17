@@ -1,0 +1,95 @@
+name: Tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# conda-forge mpich is a UCX build; on some hosted runners UCX aborts in
+# MPI_Init_thread probing an RDMA NIC it can't open (ud_verbs/mana_0 on Azure).
+# The tests run serially, so pin UCX to the loopback transports.
+env:
+  UCX_TLS: "tcp,self,sm"
+  UCX_LOG_LEVEL: "error"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fenics: "0.11"
+            env-file: .github/ci-environment.yml
+          - fenics: "0.9"
+            env-file: .github/ci-environment-09.yml
+    name: "tests (FEniCSx ${{ matrix.fenics }})"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}   # login shell so `conda activate` works
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up conda environment (FEniCSx ${{ matrix.fenics }})
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: ${{ matrix.env-file }}
+          cache-environment: true
+
+      - name: Install lab packages
+        run: |
+          pip install --no-deps --no-build-isolation \
+            "csdl_alpha @ git+https://github.com/LSDOlab/CSDL_alpha.git@main" \
+            "caddee_materials @ git+https://github.com/LSDOlab/caddee_materials.git"
+
+      - name: Install Hermit
+        run: pip install -e . --no-deps --no-build-isolation
+
+      - name: Show stack versions
+        run: python -c "import dolfinx, ufl, basix, numpy; print('dolfinx', dolfinx.__version__, '| ufl', ufl.__version__, '| basix', basix.__version__, '| numpy', numpy.__version__)"
+
+      - name: Run tests
+        # One process over the whole suite. This used to die during interpreter
+        # teardown -- SIGTERM (exit 15) on 0.11, a SIGABRT core dump (exit 134) on
+        # 0.9 -- after ~135 tests, once csdl_alpha's never-released recorder graphs
+        # had leaked past the MPICH 2048-communicator limit, so CI had to shard the
+        # suite into separate pytest processes. `tests/conftest.py`'s
+        # `pytest_runtest_teardown` hook now frees each test's FE ops (see
+        # `hermit/fenics/_cleanup.py`), so the single run completes.
+        run: pytest -rfE --tb=short
+
+      - name: Check REFERENCES.md is up to date
+        # The verification suite's reference table is generated from the `Case`
+        # objects, not hand-maintained. Nothing else notices when a new benchmark
+        # lands and the table is not regenerated, so gate it here rather than
+        # discovering the drift in a docs build months later.
+        run: python examples/verification/_references.py --check
+
+  docs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up conda environment (FEniCSx 0.11)
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: .github/ci-environment.yml
+          cache-environment: true
+
+      - name: Install lab packages
+        run: |
+          pip install --no-deps --no-build-isolation \
+            "csdl_alpha @ git+https://github.com/LSDOlab/CSDL_alpha.git@main" \
+            "caddee_materials @ git+https://github.com/LSDOlab/caddee_materials.git"
+
+      - name: Install Hermit
+        run: pip install -e . --no-deps --no-build-isolation
+
+      - name: Build docs
+        run: |
+          pip install -r requirements.txt
+          sphinx-build -b html -W --keep-going docs docs/_build/html

@@ -1,0 +1,23 @@
+# Conda base for CI (DOLFINx 0.11 leg). fenics-dolfinx has no usable PyPI
+# wheels, so CI runs under conda. The lab git packages (csdl_alpha, caddee_materials,
+# lamad) are pip-installed --no-deps in the workflow -- their setup.py pin
+# `csdl_alpha @ git+.../CSDL_alpha.git` (default branch) and would clobber the
+# explicitly installed CSDL Alpha main revision otherwise.
+name: hermit-ci
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - fenics-dolfinx=0.11.0
+  - mpich
+  - petsc=*=real*
+  - petsc4py
+  - numpy
+  - scipy
+  - sympy
+  - h5py
+  - rustworkx
+  - networkx
+  - pydot
+  - pytest
+  - pip

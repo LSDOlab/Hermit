@@ -1,0 +1,12 @@
+# Documentation build dependencies (Read the Docs, and the CI docs job).
+#
+# Single source of truth is the `docs` extra in pyproject.toml.  Keeping the list
+# here as well would make the documentation environment drift from package metadata.
+#
+# Installing the package pulls only numpy + scipy: FEniCSx, csdl_alpha and
+# caddee_materials are deliberately not in `dependencies` (they have no usable PyPI
+# wheels), and the docs build needs none of them -- autoapi parses ../hermit from the
+# source tree statically, and setuptools reads `__version__` by AST without importing
+# the package. Installing it does let conf.py report the real release rather than its
+# hardcoded fallback.
+.[docs]

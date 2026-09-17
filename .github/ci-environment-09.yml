@@ -1,0 +1,21 @@
+# Conda base for the DOLFINx 0.9 / NumPy 1.x CI leg. Hermit supports both 0.9 and
+# 0.11; the version shims live in hermit/_compat.py and hermit/_ufl_compat.py. See
+# .github/ci-environment.yml for the 0.11 leg.
+name: hermit-ci-09
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - fenics-dolfinx=0.9.0
+  - mpich
+  - petsc=*=real*
+  - petsc4py
+  - "numpy<2"
+  - scipy
+  - sympy
+  - h5py
+  - rustworkx
+  - networkx
+  - pydot
+  - pytest
+  - pip

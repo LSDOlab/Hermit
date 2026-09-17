@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermit"
+dynamic = ["version"]
+description = "Reissner-Mindlin shell analysis in FEniCSx, connected to CSDL."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "LGPL-3.0-or-later" }
+authors = [{ name = "LSDOlab" }]
+urls = { Repository = "https://github.com/LSDOlab/Hermit" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
+
+# fenics-dolfinx and petsc4py come from conda -- they have no usable PyPI wheels --
+# so they are deliberately not listed as install_requires. Hermit supports DOLFINx
+# 0.9 (NumPy 1.x) and 0.11 (NumPy 2.x); the version shims live in hermit/_compat.py
+# and hermit/_ufl_compat.py. csdl_alpha and caddee_materials are lab git packages
+# installed separately (see the workspace's scripts/setup-env and
+# .github/workflows/actions.yml).
+# Classical lamination theory is vendored from LamAD in hermit/_laminate/, so LamAD
+# itself is not a dependency.
+dependencies = [
+    "numpy>=1.24",
+    "scipy",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+# LSDOlab's modopt is distributed from Git; PyPI's unrelated ``modopt`` package
+# must not be installed for Hermit's optimization examples.
+opt = ["modopt @ git+https://github.com/LSDOlab/modopt.git", "pyslsqp"]
+examples = ["matplotlib"]
+# The full docs toolchain -- `pip install -e ".[docs]"` builds the docs.  The
+# Sphinx hook in `docs/conf.py` uses only the standard library to stage example
+# scripts and tutorials, so this extra intentionally has no VCS direct references.
+# That keeps package metadata acceptable to PyPI.
+docs = [
+    "sphinx>=9.1,<10",
+    "myst-nb",
+    "sphinx_rtd_theme",
+    "sphinx-copybutton",
+    "sphinx-autoapi",
+    "numpydoc",
+    "sphinxcontrib-bibtex",
+]
+
+[tool.setuptools.packages.find]
+# Discovery rather than an explicit list: the hand-maintained list silently went stale
+# when hermit/laminate/ was renamed to hermit/_laminate/ (it shadowed the exported
+# hm.laminate function), which an editable install resolves by path and therefore never
+# catches -- only a real install does, i.e. CI. "hermit*" matches the package and every
+# current or future subpackage, and nothing else in the tree.
+include = ["hermit*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "hermit.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
