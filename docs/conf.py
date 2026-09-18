@@ -68,6 +68,7 @@ exclude_patterns = ["README.md", "_build", "Thumbs.db", ".DS_Store", "src/welcom
 # -- HTML output ---------------------------------------------------------
 
 html_theme = "sphinx_rtd_theme"
+html_baseurl = "https://lsdolab.github.io/Hermit/"
 html_theme_options = {
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,

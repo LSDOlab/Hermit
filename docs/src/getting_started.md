@@ -2,35 +2,30 @@
 
 ## Installation
 
-Hermit needs [FEniCSx](https://fenicsproject.org/) (DOLFINx 0.9 or 0.11),
-[CSDL Alpha](https://github.com/LSDOlab/CSDL_alpha), and `caddee_materials`.
-
-DOLFINx has no usable PyPI wheels, so the environment starts from conda:
+Hermit, [FEniCSx](https://fenicsproject.org/) (DOLFINx 0.9 or 0.11),
+[CSDL Alpha](https://github.com/LSDOlab/CSDL_alpha), and `caddee_materials` are
+available from the `HgXe` and `conda-forge` channels. CSDL Alpha is currently
+promoted through the `HgXe/label/test` label:
 
 ```sh
-conda create -n hermit -c conda-forge python=3.12 fenics-dolfinx=0.11 \
-    mpich 'petsc=*=real*' petsc4py \
-    numpy scipy sympy h5py rustworkx networkx pydot
+conda create -n hermit -c HgXe/label/test -c HgXe -c conda-forge hermit
 conda activate hermit
 ```
 
-Two notes on that list. Hermit's forms are real-valued, so PETSc must be the
-**real-scalar** build. And the trailing packages are `csdl_alpha`'s runtime
-dependencies: pip would install them itself, but taking them from conda-forge keeps
-`h5py` on the same HDF5 as DOLFINx instead of the one bundled in the PyPI wheel.
+Hermit's forms are real-valued, so its package selects the **real-scalar** PETSc
+build. The `HgXe` channel supplies the CSDL lab packages and `conda-forge` supplies
+FEniCSx and its compiled dependencies.
 
-The two lab dependencies install from git. Installing `caddee_materials` should install
-`csdl_alpha`, but install it separately to be sure:
+For editable development, create the base environment explicitly and install the lab
+packages from their repositories:
 
 ```sh
+conda create -n hermit-dev -c conda-forge python=3.12 fenics-dolfinx=0.11 \
+    mpich 'petsc=*=real*' petsc4py numpy scipy sympy h5py rustworkx networkx pydot
+conda activate hermit-dev
 pip install git+https://github.com/LSDOlab/caddee_materials.git
 pip install --force-reinstall --no-deps \
     git+https://github.com/LSDOlab/CSDL_alpha.git@main
-```
-
-Then Hermit itself:
-
-```sh
 pip install -e .
 ```
 

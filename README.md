@@ -71,21 +71,15 @@ consume fewer inputs than the FE solve — build a thickness-only material with
 
 ## Installation
 
-FEniCSx has no usable PyPI wheels, so the environment starts from conda:
+Hermit and its FEniCSx / CSDL dependencies are distributed on the `HgXe` conda
+channel:
 
 ```sh
-conda create -n hermit -c conda-forge python=3.12 fenics-dolfinx=0.11 \
-    mpich 'petsc=*=real*' petsc4py \
-    numpy scipy sympy h5py rustworkx networkx pydot
+conda create -n hermit -c HgXe/label/test -c HgXe -c conda-forge hermit
 conda activate hermit
-pip install git+https://github.com/LSDOlab/caddee_materials.git
-pip install --force-reinstall --no-deps \
-    git+https://github.com/LSDOlab/CSDL_alpha.git@main
-pip install -e .
 ```
 
-Install `csdl_alpha` last so an existing environment is explicitly refreshed to its
-current upstream `main` revision. See `docs/src/getting_started.md`.
+See `docs/src/getting_started.md` for an editable-development setup.
 
 Hermit runs **serially** — `ShellDomain` requires a mesh whose vertex numbering is a
 permutation of the mesh-file order, which an MPI-partitioned mesh is not.

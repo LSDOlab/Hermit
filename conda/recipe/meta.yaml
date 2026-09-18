@@ -1,0 +1,44 @@
+{% set name = "hermit" %}
+{% set version = environ["HERMIT_VERSION"] %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  path: ../..
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - pip
+    - python
+    - setuptools >=61
+  run:
+    - python >=3.10
+    - numpy >=1.24
+    - scipy
+    - fenics-dolfinx >=0.9,<0.12
+    - petsc4py
+    - csdl_alpha
+    - caddee_materials
+
+test:
+  imports:
+    - hermit
+  commands:
+    - python -c "import hermit; print(hermit.__version__)"
+
+about:
+  home: https://github.com/LSDOlab/Hermit
+  license: LGPL-3.0-or-later
+  license_file: LICENSE.txt
+  summary: Reissner-Mindlin shell analysis in FEniCSx, connected to CSDL.
+
+extra:
+  recipe-maintainers:
+    - HgXe

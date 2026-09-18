@@ -1,0 +1,56 @@
+name: Publish conda package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and publish (for example, v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Do not send draft or pre-release versions to the stable HgXe channel.
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: conda-build
+          create-args: >-
+            python=3.12
+            conda-build
+            anaconda-client
+          # CSDL Alpha is presently promoted through HgXe's test label; the other
+          # lab package is in the main HgXe channel.
+          channels: HgXe/label/test,HgXe,conda-forge
+
+      - name: Verify the release version
+        run: |
+          version="${RELEASE_TAG#v}"
+          source_version="$(python -c "import ast; print(next(node.value.value for node in ast.parse(open('hermit/__init__.py').read()).body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == '__version__' for target in node.targets)))")"
+          test "$version" = "$source_version"
+          echo "HERMIT_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build conda package
+        run: conda build --override-channel -c HgXe/label/test -c HgXe -c conda-forge conda/recipe --output-folder conda-bld
+
+      - name: Publish to the HgXe channel
+        run: |
+          test -n "$ANACONDA_API_TOKEN" || { echo "Missing repository secret ANACONDA_API_TOKEN"; exit 1; }
+          anaconda -t "$ANACONDA_API_TOKEN" upload --skip-existing conda-bld/noarch/*.conda
