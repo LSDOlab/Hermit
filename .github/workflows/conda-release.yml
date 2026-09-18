@@ -46,9 +46,11 @@ jobs:
             python=3.12
             conda-build
             anaconda-client
-          # CSDL Alpha is presently promoted through HgXe's test label; the other
-          # lab package is in the main HgXe channel.
-          channels: HgXe/label/test,HgXe,conda-forge
+          # The build tools come from conda-forge. The package build itself uses
+          # the explicit HgXe test/main and conda-forge channel order below.
+          condarc: |
+            channels:
+              - conda-forge
 
       - name: Verify the release version
         run: |
