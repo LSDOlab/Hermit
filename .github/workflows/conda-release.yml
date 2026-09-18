@@ -29,6 +29,16 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
+      # v1.0.0 predates this workflow and its recipe. Keep its package source at
+      # the immutable release tag, but take the packaging recipe from main. Every
+      # later release tag contains conda/recipe itself.
+      - name: Obtain the packaging recipe
+        run: |
+          if [ ! -f conda/recipe/meta.yaml ]; then
+            git fetch origin main
+            git checkout FETCH_HEAD -- conda/recipe
+          fi
+
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: conda-build
