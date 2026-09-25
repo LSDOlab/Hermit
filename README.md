@@ -71,11 +71,11 @@ consume fewer inputs than the FE solve — build a thickness-only material with
 
 ## Installation
 
-Hermit and its FEniCSx / CSDL dependencies are distributed on the `HgXe` conda
+Hermit and its FEniCSx / CSDL dependencies are distributed on the `LSDOlab` conda
 channel:
 
 ```sh
-conda create -n hermit -c HgXe/label/test -c HgXe -c conda-forge hermit
+conda create -n hermit -c LSDOlab/label/test -c LSDOlab -c conda-forge hermit
 conda activate hermit
 ```
 

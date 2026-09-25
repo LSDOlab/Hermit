@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   publish:
-    # Do not send draft or pre-release versions to the stable HgXe channel.
+    # Do not send draft or pre-release versions to the stable LSDOlab channel.
     if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     defaults:
@@ -23,7 +23,8 @@ jobs:
         shell: bash -el {0}
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      ANACONDA_API_KEY: ${{ secrets.ANACONDA_API_KEY }}
+      ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_API_TOKEN }}
+      ANACONDA_OWNER: LSDOlab
     steps:
       - uses: actions/checkout@v6
         with:
@@ -47,7 +48,7 @@ jobs:
             conda-build
             anaconda-client
           # The build tools come from conda-forge. The package build itself uses
-          # the explicit HgXe test/main and conda-forge channel order below.
+          # the explicit LSDOlab test/main and conda-forge channel order below.
           condarc: |
             channels:
               - conda-forge
@@ -60,9 +61,9 @@ jobs:
           echo "HERMIT_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Build conda package
-        run: conda build --override-channel -c HgXe/label/test -c HgXe -c conda-forge conda/recipe --output-folder conda-bld
+        run: conda build --override-channel -c LSDOlab/label/test -c LSDOlab -c conda-forge conda/recipe --output-folder conda-bld
 
-      - name: Publish to the HgXe channel
+      - name: Publish to the LSDOlab channel
         run: |
-          test -n "$ANACONDA_API_KEY" || { echo "Missing repository secret ANACONDA_API_KEY"; exit 1; }
-          anaconda -t "$ANACONDA_API_KEY" upload --skip-existing conda-bld/noarch/*.conda
+          test -n "$ANACONDA_API_TOKEN" || { echo "Missing repository secret ANACONDA_API_TOKEN"; exit 1; }
+          anaconda -t "$ANACONDA_API_TOKEN" upload --user "$ANACONDA_OWNER" --skip-existing conda-bld/noarch/*.conda
