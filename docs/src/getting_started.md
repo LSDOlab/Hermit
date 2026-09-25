@@ -4,16 +4,16 @@
 
 Hermit, [FEniCSx](https://fenicsproject.org/) (DOLFINx 0.9 or 0.11),
 [CSDL Alpha](https://github.com/LSDOlab/CSDL_alpha), and `caddee_materials` are
-available from the `HgXe` and `conda-forge` channels. CSDL Alpha is currently
-promoted through the `HgXe/label/test` label:
+available from the `LSDOlab` and `conda-forge` channels. CSDL Alpha is currently
+promoted through the `LSDOlab/label/test` label:
 
 ```sh
-conda create -n hermit -c HgXe/label/test -c HgXe -c conda-forge hermit
+conda create -n hermit -c LSDOlab/label/test -c LSDOlab -c conda-forge hermit
 conda activate hermit
 ```
 
 Hermit's forms are real-valued, so its package selects the **real-scalar** PETSc
-build. The `HgXe` channel supplies the CSDL lab packages and `conda-forge` supplies
+build. The `LSDOlab` channel supplies the CSDL lab packages and `conda-forge` supplies
 FEniCSx and its compiled dependencies.
 
 For editable development, create the base environment explicitly and install the lab
