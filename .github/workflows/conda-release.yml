@@ -1,3 +1,11 @@
+# Builds the conda package from recipe/recipe.yaml and publishes it to
+# anaconda.org under the LSDOlab channel, where csdl_alpha (a run dependency)
+# is also published.
+#
+# Runs when a GitHub Release is published (e.g. via `gh release create
+# vX.Y.Z`), so publishing is tied to an explicit, visible release; can also
+# be triggered manually to republish/retry.
+
 name: Publish conda package
 
 on:
@@ -5,65 +13,30 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing release tag to build and publish (for example, v1.0.0)
+      publish:
+        description: Upload the built package to Anaconda.org
         required: true
-        type: string
-
-permissions:
-  contents: read
+        default: false
+        type: boolean
 
 jobs:
-  publish:
-    # Do not send draft or pre-release versions to the stable LSDOlab channel.
-    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+  build-and-publish:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash -el {0}
-    env:
-      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_API_TOKEN }}
-      ANACONDA_OWNER: LSDOlab
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
-
-      # v1.0.0 predates this workflow and its recipe. Keep its package source at
-      # the immutable release tag, but take the packaging recipe from main. Every
-      # later release tag contains conda/recipe itself.
-      - name: Obtain the packaging recipe
-        run: |
-          if [ ! -f conda/recipe/meta.yaml ]; then
-            git fetch origin main
-            git checkout FETCH_HEAD -- conda/recipe
-          fi
-
-      - uses: mamba-org/setup-micromamba@v2
-        with:
-          environment-name: conda-build
-          create-args: >-
-            python=3.12
-            conda-build
-            anaconda-client
-          # The build tools come from conda-forge. The package build itself uses
-          # the explicit LSDOlab test/main and conda-forge channel order below.
-          condarc: |
-            channels:
-              - conda-forge
-
-      - name: Verify the release version
-        run: |
-          version="${RELEASE_TAG#v}"
-          source_version="$(python -c "import ast; print(next(node.value.value for node in ast.parse(open('hermit/__init__.py').read()).body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == '__version__' for target in node.targets)))")"
-          test "$version" = "$source_version"
-          echo "HERMIT_VERSION=$version" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
 
       - name: Build conda package
-        run: conda build --override-channel -c LSDOlab/label/test -c LSDOlab -c conda-forge conda/recipe --output-folder conda-bld
+        uses: prefix-dev/rattler-build-action@v0.2.39
+        with:
+          recipe-path: recipe/recipe.yaml
+          build-args: -c LSDOlab -c conda-forge
+          upload-artifact: false
 
-      - name: Publish to the LSDOlab channel
+      - name: Publish to Anaconda.org (LSDOlab)
+        if: github.event_name == 'release' || inputs.publish
+        env:
+          ANACONDA_API_KEY: ${{ secrets.ANACONDA_API_TOKEN || secrets.ANACONDA_API_KEY }}
         run: |
-          test -n "$ANACONDA_API_TOKEN" || { echo "Missing repository secret ANACONDA_API_TOKEN"; exit 1; }
-          anaconda -t "$ANACONDA_API_TOKEN" upload --user "$ANACONDA_OWNER" --skip-existing conda-bld/noarch/*.conda
+          for pkg in $(find output -type f \( -name "*.conda" -o -name "*.tar.bz2" \)); do
+            rattler-build upload anaconda -o LSDOlab "${pkg}"
+          done
