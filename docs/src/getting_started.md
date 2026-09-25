@@ -4,11 +4,10 @@
 
 Hermit, [FEniCSx](https://fenicsproject.org/) (DOLFINx 0.9 or 0.11),
 [CSDL Alpha](https://github.com/LSDOlab/CSDL_alpha), and `caddee_materials` are
-available from the `LSDOlab` and `conda-forge` channels. CSDL Alpha is currently
-promoted through the `LSDOlab/label/test` label:
+available from the `LSDOlab` and `conda-forge` channels:
 
 ```sh
-conda create -n hermit -c LSDOlab/label/test -c LSDOlab -c conda-forge hermit
+conda create -n hermit -c LSDOlab -c conda-forge hermit
 conda activate hermit
 ```
 

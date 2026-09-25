@@ -75,7 +75,7 @@ Hermit and its FEniCSx / CSDL dependencies are distributed on the `LSDOlab` cond
 channel:
 
 ```sh
-conda create -n hermit -c LSDOlab/label/test -c LSDOlab -c conda-forge hermit
+conda create -n hermit -c LSDOlab -c conda-forge hermit
 conda activate hermit
 ```
 

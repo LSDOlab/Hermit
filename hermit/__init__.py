@@ -14,7 +14,7 @@ shadow the public function of the same name. ``import hermit.solve`` would other
 rebind ``hermit.solve`` from the function to the module -- silently, with no error.
 """
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 
 from . import _compat as _compat  # noqa: E402  (DOLFINx 0.9 / 0.11 shims)
 from . import _ufl_compat as _ufl_compat  # noqa: E402

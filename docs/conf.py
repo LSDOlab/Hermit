@@ -21,7 +21,7 @@ try:
 
     release = _v("hermit")
 except Exception:
-    release = "1.0.0"
+    release = "0.1.0"
 version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
