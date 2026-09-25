@@ -26,9 +26,10 @@ requirements:
     - caddee_materials
 
 tests:
-  - python:
-      imports:
-        - hermit
+  # Importing Hermit initializes MPI; hosted runners need loopback UCX transports.
+  - script:
+      - UCX_TLS=tcp,self,sm UCX_LOG_LEVEL=error python -c "import hermit; print(hermit.__version__)"
+      - python -m pip check
 
 about:
   homepage: https://github.com/LSDOlab/Hermit
