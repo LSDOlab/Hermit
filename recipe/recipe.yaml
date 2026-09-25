@@ -30,6 +30,9 @@ tests:
   - script:
       - UCX_TLS=tcp,self,sm UCX_LOG_LEVEL=error python -c "import hermit; print(hermit.__version__)"
       - python -m pip check
+    requirements:
+      run:
+        - pip
 
 about:
   homepage: https://github.com/LSDOlab/Hermit
