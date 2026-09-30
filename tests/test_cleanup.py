@@ -1,16 +1,21 @@
-"""``release_fe_resources`` must let a finished solve's mesh go.
+"""``release_fe_resources`` must let a finished solve's mesh -- and every MPI
+communicator hanging off it -- go.
 
 Every mesh and function space pins MPI communicators, and csdl_alpha never releases
 a recorder's graph, so anything an op still references after the teardown sweep
-leaks for the life of the process -- the full suite then hits MPICH's 2048-context
-limit and dies with exit 15 (0.11) or 134 (0.9) part-way through. A penalty BC's
-prescribed-value ``Function`` held on ``ShellSolveOp`` once leaked one mesh per solve
-this way.
+leaks for the life of the process. The full suite then hits MPICH's 2048-context
+limit and dies part-way through with exit 15 (0.11) or 134 (0.9), with no Python
+traceback. Three such references have been found:
 
-A second leak is still open: each solve on a *fresh* mesh loses ~5 contexts (0.11;
-~6 on 0.9) even after that mesh has been collected, while repeat solves on one mesh
-lose none. Until it is fixed, a test that loops over evaluations should build its
-mesh once.
+* ``ShellSolveOp._penalty_target`` -- a penalty BC's prescribed-value ``Function``;
+* ``ShellFieldFormsOp.pde`` -- never cleared by the sweep;
+* ``_node_idx`` on every op -- a zero-copy NumPy view of the C++ geometry. A view
+  keeps its owner alive through a reference ``gc`` cannot see, so the leaked mesh
+  had no visible referrer at all.
+
+``hm.project``'s op was not swept at all. The context-count gate below is the one
+that catches the invisible kind: a weak reference to the Python ``Mesh`` wrapper
+dies even while the C++ mesh lives on.
 """
 
 import gc
@@ -28,7 +33,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "examples" / "verific
 from _geometry import rect_plate  # noqa: E402
 
 
-def _solve_and_forget(method):
+def _solve_and_forget(method, outputs=False):
     """Solve on a fresh mesh; return only a weak reference to that mesh."""
     rec = csdl.Recorder(inline=True); rec.start()
     domain = hm.ShellDomain(rect_plate(4.0, 1.0, 4, 2))
@@ -36,19 +41,16 @@ def _solve_and_forget(method):
     state = hm.solve(domain, material, hm.pressure(domain, 1.0),
                      hm.clamp(domain, where=hm.near("x", 0.0), method=method))
     hm.compliance(state)
+    if outputs:
+        hm.stress_field(state)
+        hm.project(material.thickness, ("Lagrange", 1))
     rec.stop()
     return weakref.ref(domain.mesh)
 
 
-def test_penalty_solve_releases_its_mesh():
-    mesh = _solve_and_forget("penalty")
-    release_fe_resources()
-    gc.collect()
-    assert mesh() is None
-
-
-def test_strong_solve_releases_its_mesh():
-    mesh = _solve_and_forget("strong")
+@pytest.mark.parametrize("method", ["penalty", "strong"])
+def test_solve_releases_its_mesh(method):
+    mesh = _solve_and_forget(method)
     release_fe_resources()
     gc.collect()
     assert mesh() is None
@@ -76,13 +78,12 @@ def _free_contexts():
     return len(comms)
 
 
-@pytest.mark.xfail(strict=True, reason="open: each fresh-mesh solve leaks ~5 MPI contexts "
-                                       "that outlive the mesh; see the module docstring")
-def test_fresh_mesh_solves_leak_no_contexts():
-    _solve_and_forget("penalty")          # warm every one-time cache first
+@pytest.mark.parametrize("method", ["penalty", "strong"])
+def test_fresh_mesh_solves_leak_no_contexts(method):
+    _solve_and_forget(method, outputs=True)   # warm every one-time cache first
     release_fe_resources(); gc.collect()
     before = _free_contexts()
     for _ in range(4):
-        _solve_and_forget("penalty")
+        _solve_and_forget(method, outputs=True)
     release_fe_resources(); gc.collect()
     assert _free_contexts() == before

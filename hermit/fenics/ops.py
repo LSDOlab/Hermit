@@ -33,6 +33,16 @@ _PDE_ATTR = {"thickness": "h"}  # FE arg name -> ShellPDE attribute
 _ORIENTATION_NAMES = ("fiber_angle", "fiber_direction")
 
 
+def _node_input_indices(mesh):
+    """File-order index of each geometry node, as an array this op owns.
+
+    ``geometry.input_global_indices`` is a zero-copy view of the C++ geometry, and
+    a NumPy view keeps its owner alive without any reference ``gc`` can see: stored
+    as is, it would pin the mesh -- and its MPI communicators -- for as long as the
+    op lives, which csdl_alpha makes forever."""
+    return np.array(mesh.geometry.input_global_indices, dtype=np.int64, copy=True)
+
+
 def _share_edge_and_penalty_ds(pde, bc, loads):
     """Return form-local measures sharing one exterior-facet ``MeshTags`` object.
 
@@ -267,7 +277,7 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
                 raise ValueError(f"unknown solve arg {n!r}")
         self.Vc = self._forms["Vc"]
 
-        self._node_idx = np.asarray(pde.mesh.geometry.input_global_indices, dtype=np.int64)
+        self._node_idx = _node_input_indices(pde.mesh)
         self.gdim = pde.mesh.geometry.dim
         self._diff_geometry = "mesh_nodes" in self.arg_names
         self._const_mesh_nodes = None  # captured in evaluate() when geometry isn't a live arg
@@ -484,7 +494,7 @@ class ShellScalarFormsOp(csdl.CustomExplicitOperation):
             else:
                 self._func[n] = getattr(pde, _ARG_TO_PDE[n])
         self._const_mesh_nodes = None
-        self._node_idx = np.asarray(pde.mesh.geometry.input_global_indices, dtype=np.int64)
+        self._node_idx = _node_input_indices(pde.mesh)
         self.gdim = pde.mesh.geometry.dim
         if differentiable_geometry:
             self.Vc = functionspace(pde.mesh, pde.mesh.ufl_domain().ufl_coordinate_element())
@@ -694,7 +704,7 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
         self.gdim = pde.mesh.geometry.dim
         self.tdim = pde.mesh.topology.dim
         self.nel = pde.mesh.topology.index_map(self.tdim).size_local
-        self._node_idx = np.asarray(pde.mesh.geometry.input_global_indices, dtype=np.int64)
+        self._node_idx = _node_input_indices(pde.mesh)
         self._const_mesh_nodes = None
         if differentiable_geometry:
             self.Vc = functionspace(pde.mesh, pde.mesh.ufl_domain().ufl_coordinate_element())

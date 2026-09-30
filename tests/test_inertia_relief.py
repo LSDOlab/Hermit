@@ -163,8 +163,8 @@ def test_force_through_the_center_of_gravity(recorder):
 
 @functools.cache
 def _fd_mesh():
-    """One mesh for every evaluation -- fresh-mesh solves leak MPI contexts (see
-    test_cleanup.py)."""
+    """One mesh for every finite-difference evaluation; the shape perturbation is a
+    ``geometry`` input, not a new mesh."""
     return rect_plate(10.0, 2.0, 8, 4, cell="triangle")
 
 

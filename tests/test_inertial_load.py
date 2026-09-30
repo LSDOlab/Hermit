@@ -138,10 +138,8 @@ def test_composes_linearly_with_other_loads(recorder):
 
 @functools.cache
 def _fd_mesh():
-    """One mesh for every finite-difference evaluation. Each solve on a *fresh* mesh
-    leaks ~5 MPI contexts that outlive the mesh (see test_cleanup.py), and the suite
-    runs in one process under MPICH's 2048-context limit; repeat solves on one mesh
-    leak none."""
+    """One mesh for every finite-difference evaluation -- the perturbations are of
+    the inputs, not the mesh, so there is nothing to rebuild."""
     return rect_plate(L, WIDTH, 6, 3, cell="triangle")
 
 

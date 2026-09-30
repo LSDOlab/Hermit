@@ -67,7 +67,20 @@ def release(op) -> None:
         for ksp in getattr(op, "_ksp", {}).values():
             _destroy(ksp)
         _clear(op, "_ksp", "_holder", "_func", "space", "_L", "_vol", "_Mform",
-               "_iexpr", "_ijexpr", "_ipts", "fields", "Vc")
+               "_iexpr", "_ijexpr", "_ipts", "fields", "Vc", "pde")
+    elif isinstance(op, _project_op_type()):
+        _destroy(getattr(op, "_ksp", None))
+        _clear(op, "_ksp", "_src_fn", "_c_fn", "_L", "_Mform", "X", "Vc", "mesh", "domain")
+
+
+def _project_op_type():
+    """``hermit.transfer._ProjectOp`` (``hm.project``), imported lazily: it lives in
+    the CSDL-side package, above this module."""
+    try:
+        from ..transfer import _ProjectOp
+    except Exception:  # pragma: no cover - transfer should always import
+        return ()
+    return _ProjectOp
 
 
 def release_fe_resources() -> int:
@@ -77,7 +90,7 @@ def release_fe_resources() -> int:
     """
     from .ops import ShellSolveOp, ShellScalarFormsOp, ShellFieldFormsOp
 
-    op_types = (ShellSolveOp, ShellScalarFormsOp, ShellFieldFormsOp)
+    op_types = (ShellSolveOp, ShellScalarFormsOp, ShellFieldFormsOp, _project_op_type())
     try:
         from ..domain import ShellDomain
     except Exception:  # pragma: no cover - domain module should always import
