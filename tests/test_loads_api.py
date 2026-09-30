@@ -191,26 +191,9 @@ def test_pressure_matches_legacy_elementwise_pressure(plate_mesh, cantilever_ref
     assert_matches_legacy(disp_new2.value, legacy_disp)
 
 
-def test_pressure_raises_on_inconsistent_orientation(plate_mesh, recorder):
-    """``check_cell_orientation_consistency`` (and hence ``hm.pressure``) must
-    reject a mesh where two facet-adjacent cells' normals point opposite ways.
-    Rather than hand-build a pathological (self-intersecting-risk) mesh, flip one
-    real adjacent cell's memoized frame on the ordinary plate fixture -- exercises
-    exactly the same check, without touching dolfinx mesh construction."""
-    dom = hermit.ShellDomain(plate_mesh)
-    tdim = dom.mesh.topology.dim
-    fdim = tdim - 1
-    dom.mesh.topology.create_connectivity(fdim, tdim)
-    f2c = dom.mesh.topology.connectivity(fdim, tdim)
-    pair = next((tuple(int(c) for c in f2c.links(f)) for f in range(f2c.num_nodes)
-                if len(f2c.links(f)) == 2), None)
-    assert pair is not None
-
-    frames = dom.local_frames().copy()
-    frames[pair[1]] = -frames[pair[1]]     # flip the whole frame -> flips the normal
-    dom._frames = frames                    # same object local_frames() already returned
-    with pytest.raises(ValueError, match="inconsistently oriented"):
-        hld.pressure(dom, 1.0)
+# hm.pressure rejecting a mis-wound mesh: tests/test_junctions.py
+# (test_flipped_cell_in_box_raises). The check is topological, so it needs a
+# genuinely reversed cell rather than a flipped cached frame.
 
 
 # -- compliance = work conjugate, for one load and for a sum -------------------

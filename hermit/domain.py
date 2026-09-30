@@ -232,17 +232,26 @@ class ShellDomain:
         return self._eval_frames(points, fe_cells)
 
     # -- cell-orientation consistency ------
-    def check_cell_orientation_consistency(self, tol=0.0):
-        """Verify that cell normals do not flip across shared interior facets.
+    def check_cell_orientation_consistency(self, tol=None):
+        """Verify that the cells are consistently wound across shared facets.
 
         Called by :func:`~hermit.pressure` and :func:`~hermit.edge_pressure`, whose
         sign convention is only well defined on a consistently wound mesh.
 
+        The check is topological: two cells sharing an edge are consistently
+        oriented when they traverse it in opposite directions. Unlike comparing the
+        two normals, this does not depend on the angle between the cells, so sharp
+        creases and the corners of a closed box (where adjacent normals are
+        perpendicular, or further apart) pass as long as the winding agrees. Edges
+        shared by three or more cells -- shell junctions, such as a rib meeting a
+        skin -- carry no orientation constraint and are skipped, as are boundary
+        edges.
+
         Parameters
         ----------
-        tol : float, optional
-            Two adjacent normals are inconsistent when their dot product is at or
-            below this. Default 0.
+        tol : None
+            Deprecated and ignored. It was the normal dot-product threshold of the
+            earlier, geometric check.
 
         Raises
         ------
@@ -254,6 +263,11 @@ class ShellDomain:
         -----
         Cheap and memoized; a no-op after the first successful call.
         """
+        if tol is not None:
+            import warnings
+
+            warnings.warn("check_cell_orientation_consistency(tol=...) is ignored: the check "
+                          "is topological and has no tolerance", DeprecationWarning, stacklevel=2)
         if self._orientation_ok is not None:
             if not self._orientation_ok:
                 raise ValueError(self._orientation_error)
@@ -261,28 +275,33 @@ class ShellDomain:
         import dolfinx
 
         tdim = self.mesh.topology.dim
-        fdim = tdim - 1
-        self.mesh.topology.create_connectivity(fdim, tdim)
-        f2c = self.mesh.topology.connectivity(fdim, tdim)
-        n = self.local_frames()[:, 2, :]
-        bad = None
-        for f in range(f2c.num_nodes):
-            cells = f2c.links(f)
-            if len(cells) != 2:
-                continue
-            a, b = int(cells[0]), int(cells[1])
-            if np.dot(n[a], n[b]) <= tol:
-                bad = (a, b)
-                break
-        if bad is not None:
+        self.mesh.topology.create_connectivity(tdim, 0)
+        c2v = self.mesh.topology.connectivity(tdim, 0)
+        verts = np.asarray(c2v.array, dtype=np.int64).reshape(self.n_cells, -1)
+        # Vertex loop in the direction of the cell normal: basix orders a quad's
+        # vertices as a tensor product, (0,0) (1,0) (0,1) (1,1).
+        if self.mesh.topology.cell_type == dolfinx.mesh.CellType.quadrilateral:
+            verts = verts[:, [0, 1, 3, 2]]
+        a, b = verts.ravel(), np.roll(verts, -1, axis=1).ravel()
+        cell = np.repeat(np.arange(self.n_cells), verts.shape[1])
+        edges = np.stack([np.minimum(a, b), np.maximum(a, b)], axis=1)
+        sense = np.where(a < b, 1, -1)
+        _, edge, count = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
+        edge = edge.ravel()
+        shared = count[edge] == 2
+        net = np.zeros(count.size, dtype=np.int64)
+        np.add.at(net, edge[shared], sense[shared])
+        bad_edges = np.flatnonzero(net != 0)
+        if bad_edges.size:
+            bad = cell[np.isin(edge, bad_edges[:1])]
             self._orientation_ok = False
             self._orientation_error = (
-                f"ShellDomain: cell normals are inconsistently oriented across a "
-                f"shared facet (e.g. FE cells {bad[0]}/{bad[1]} have normals "
-                f"pointing opposite ways) -- hm.pressure's sign convention "
-                f"(positive p acts along +n) is not well defined on this mesh. Fix "
-                f"the mesh winding upstream, or use hm.traction instead (it takes "
-                f"an explicit global vector and sidesteps CellNormal entirely)."
+                f"ShellDomain: cells are inconsistently oriented across a shared facet "
+                f"(e.g. FE cells {bad[0]}/{bad[1]} traverse it in the same direction, "
+                f"so their normals point opposite ways) -- hm.pressure's sign "
+                f"convention (positive p acts along +n) is not well defined on this "
+                f"mesh. Fix the mesh winding upstream, or use hm.traction instead (it "
+                f"takes an explicit global vector and sidesteps CellNormal entirely)."
             )
             raise ValueError(self._orientation_error)
         self._orientation_ok = True

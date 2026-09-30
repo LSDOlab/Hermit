@@ -18,6 +18,10 @@ Two helpers build the common cases:
 - :func:`on_plane` -- points on a plane through a point with a given normal, which
   need not be axis-aligned.
 
+A facet is selected when all of its vertices are. The penalty path integrates over
+exterior facets, ordinary interior facets and facets at shell junctions (three or
+more cells, e.g. where a rib meets a skin) alike.
+
 Prescribed values
 -----------------
 Every builder takes ``value=`` -- a scalar, a ``(6,)`` vector over
@@ -190,10 +194,39 @@ def _axis_aligned_index(normal):
 
 # -- compiled penalty measures --------------------------------------------
 
+def _interior_facet_entities(mesh, facets):
+    """Flattened ``(cell0, local_facet0, cell1, local_facet1)`` integration entities
+    for every facet in ``facets`` that touches two or more cells.
+
+    ``dS`` is built from these rather than from ``MeshTags`` because DOLFINx's
+    ``compute_integration_domains`` keeps only facets with *exactly* two cells: a
+    facet at a shell junction (three or more cells -- a rib meeting a skin, say)
+    is dropped without a word, and a penalty BC located there constrains nothing.
+    Integrating over one pair of the facet's cells is enough, since the state is
+    continuous across the facet. Facets with one cell are left to ``ds``.
+    """
+    tdim = mesh.topology.dim
+    mesh.topology.create_connectivity(tdim - 1, tdim)
+    mesh.topology.create_connectivity(tdim, tdim - 1)
+    f2c = mesh.topology.connectivity(tdim - 1, tdim)
+    c2f = mesh.topology.connectivity(tdim, tdim - 1)
+    out = []
+    for f in np.asarray(facets, dtype=np.int32):
+        cells = f2c.links(f)
+        if len(cells) < 2:
+            continue
+        for c in cells[:2]:
+            out += [int(c), int(np.flatnonzero(c2f.links(c) == f)[0])]
+    return np.asarray(out, dtype=np.int32)
+
+
 def _compiled_measure(mesh, dim, entities, kind, quadrature_degree):
     ents = np.asarray(entities, dtype=np.int32)
-    mt = dmesh.meshtags(mesh, dim, ents, np.full(len(ents), _BC_TAG, dtype=np.int32))
-    return ufl.Measure(kind, domain=mesh, subdomain_data=mt,
+    if kind == "dS":
+        data = [(_BC_TAG, _interior_facet_entities(mesh, ents))]
+    else:
+        data = dmesh.meshtags(mesh, dim, ents, np.full(len(ents), _BC_TAG, dtype=np.int32))
+    return ufl.Measure(kind, domain=mesh, subdomain_data=data,
                        metadata={"quadrature_degree": quadrature_degree})(_BC_TAG)
 
 
@@ -240,9 +273,10 @@ def _merge_penalty_terms(domain, terms_a, terms_b):
 
 
 def _shared_measures(domain, terms, fdim):
-    """Rebuild each term's ``(dss, dSS)`` sharing **one** ``MeshTags`` object per
-    measure kind (a distinct tag per term), instead of each term's own independently
-    tagged ``MeshTags`` (what ``_make_penalty_term`` gives every term, correct for a
+    """Rebuild each term's ``(dss, dSS)`` sharing **one** ``subdomain_data`` object
+    per measure kind (a distinct tag per term) -- a ``MeshTags`` for ``ds``, an
+    integration-entity list for ``dS`` -- instead of each term's own independently
+    tagged data (what ``_make_penalty_term`` gives every term, correct for a
     single term used alone). dolfinx requires every integral of a given type inside
     one compiled ``Form`` to share the same ``subdomain_data`` object -- summing two
     terms' independently-tagged measures into one residual
@@ -257,19 +291,18 @@ def _shared_measures(domain, terms, fdim):
         order = np.argsort(ents)
         return dmesh.meshtags(domain.mesh, fdim, ents[order], tags[order])
 
-    ds_ents, ds_tags, dS_ents, dS_tags = [], [], [], []
+    ds_ents, ds_tags, dS_data = [], [], []
     for i, t in enumerate(terms):
         tag = i + 1
         if t.entities_ds.size:
             ds_ents.append(t.entities_ds)
             ds_tags.append(np.full(t.entities_ds.size, tag, dtype=np.int32))
-        if t.entities_dS.size:
-            dS_ents.append(t.entities_dS)
-            dS_tags.append(np.full(t.entities_dS.size, tag, dtype=np.int32))
+        # dS: explicit integration entities, not MeshTags -- see _interior_facet_entities.
+        dS_data.append((tag, _interior_facet_entities(domain.mesh, t.entities_dS)))
 
     md = {"quadrature_degree": domain.quadrature_degree}
     ds_measure = ufl.Measure("ds", domain=domain.mesh, subdomain_data=_mt(ds_ents, ds_tags), metadata=md)
-    dS_measure = ufl.Measure("dS", domain=domain.mesh, subdomain_data=_mt(dS_ents, dS_tags), metadata=md)
+    dS_measure = ufl.Measure("dS", domain=domain.mesh, subdomain_data=dS_data, metadata=md)
     return [(ds_measure(i + 1), dS_measure(i + 1)) for i in range(len(terms))]
 
 
