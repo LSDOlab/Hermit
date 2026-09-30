@@ -88,7 +88,9 @@ permutation of the mesh-file order, which an MPI-partitioned mesh is not.
 
 `examples/basic_examples/ex_cantilever_plate.py` (forward),
 `examples/advanced_examples/ex_thickness_opt.py` (thickness optimization with
-modopt/SLSQP), `examples/basic_examples/ex_composite_plate.py` (ply-angle sweep).
+modopt/SLSQP), `examples/advanced_examples/ex_stw.py` (constant-mass compliance
+minimization of the STW benchmark wingbox, exported for ParaView),
+`examples/basic_examples/ex_composite_plate.py` (ply-angle sweep).
 
 ## Tests
 

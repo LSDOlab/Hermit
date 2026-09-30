@@ -35,7 +35,7 @@ dependencies = [
 test = ["pytest"]
 # LSDOlab's modopt is distributed from Git; PyPI's unrelated ``modopt`` package
 # must not be installed for Hermit's optimization examples.
-opt = ["modopt @ git+https://github.com/LSDOlab/modopt.git", "pyslsqp"]
+opt = ["modopt @ git+https://github.com/LSDOlab/modopt.git", "pyslsqp", "jax"]
 examples = ["matplotlib"]
 # The full docs toolchain -- `pip install -e ".[docs]"` builds the docs.  The
 # Sphinx hook in `docs/conf.py` uses only the standard library to stage example

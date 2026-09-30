@@ -31,12 +31,13 @@ pip install -e .
 Optional extras: `.[examples]` for the plotting examples and `.[docs]` for the
 documentation toolchain.
 
-The optimizer stack --- needed by `ex_thickness_opt.py` and
+The optimizer stack --- needed by `ex_thickness_opt.py`, `ex_stw.py` and
 `ex_optimal_thickness_taper.py` --- is LSDOlab's `modopt`, which shares a name with an
-unrelated package on PyPI. Install it from git:
+unrelated package on PyPI. Install it from git, with JAX for `ex_stw.py`'s
+`JaxSimulator` (or `pip install -e ".[opt]"`):
 
 ```sh
-pip install git+https://github.com/LSDOlab/modopt.git pyslsqp
+pip install git+https://github.com/LSDOlab/modopt.git pyslsqp jax
 ```
 
 Hermit runs **serially**: `ShellDomain` requires a mesh whose vertex numbering is a
