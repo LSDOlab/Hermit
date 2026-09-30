@@ -111,9 +111,21 @@ reaches the residual on its own FE space with no interpolation between terms.
   on a badly wound import, a uniform pressure would silently become a
   sign-alternating load.
 - `hm.traction(domain, t)` --- force per unit area in global components. This never
-  touches the normal, so it is the correct choice for a body force such as self
-  weight on a curved roof, where the two are very different loads.
+  touches the normal, so on a curved roof it is a very different load from a
+  pressure of the same magnitude.
 - `hm.moment(domain, m)` --- moment per unit area, conjugate to the director rotation.
+- `hm.inertial_load(domain, material, acceleration=...)` --- the structure's own
+  mass in an accelerating frame: force per unit area
+  $\rho t\,(\mathbf{a} + \boldsymbol{\alpha}\times(\mathbf{x}-\mathbf{x}_0))$,
+  from the material's thickness and density on whatever spaces they were built on.
+  `acceleration` is the load per unit mass with the sign of gravity, so
+  `[0, 0, -9.81]` is self weight and `2.5 * [0, 0, -9.81]` a 2.5 g manoeuvre;
+  `angular_acceleration=` and `about=` add a rigid rotation. Its force resultant is
+  exactly $m\,\mathbf{a} + \boldsymbol{\alpha}\times m(\mathbf{x}_{cg}-\mathbf{x}_0)$,
+  with $m$ = `hm.mass` and $\mathbf{x}_{cg}$ = `hm.center_of_gravity` --- just
+  $m\,\mathbf{a}$ without an angular part --- and it is differentiable in the accelerations, the
+  thickness and density, and the mesh coordinates. The rotary inertia of the
+  thickness is neglected, as in `hm.mass`.
 
 ### On an edge
 
@@ -135,8 +147,35 @@ other; the tagged facet measure is structural form data and is fixed at construc
 the containing cell is located, the state-space basis is evaluated there, and the
 result is scattered into the right-hand side --- the weak form of a Dirac delta, so
 `at` need not be a mesh vertex. It is differentiable in `force` and `moment`, but not
-in `at` or the mesh coordinates. `hm.load_vector(domain, vec)` supplies a generalized
+in `at`. Under a mesh perturbation the load stays attached to the same material
+point, so its right-hand side does not depend on the mesh coordinates at all and the
+shape derivative is exact; a load pinned to a fixed spatial point is not supported. `hm.load_vector(domain, vec)` supplies a generalized
 right-hand side directly, in `domain.W` dof order.
+
+### Inertia relief
+
+A free structure -- an aircraft in flight, a satellite -- has no supports to react
+its loads. `hm.inertia_relief(domain, material, loads)` finds the rigid-body
+acceleration at which the structure's own inertia balances the force and moment
+resultants of `loads`, and returns that inertial load and the acceleration:
+
+```python
+relief, accel = hm.inertia_relief(domain, material, loads)
+support = hm.gauge(domain, at=p, dofs=("ux", "uy", "uz", "rx", "ry", "rz"))
+state = hm.solve(domain, material, loads + relief, support)
+```
+
+The stiffness of a free structure is still singular, so the gauge is needed; because
+`loads + relief` is self-equilibrated it carries no reaction, and moving it changes
+the displacement only by a rigid-body motion. Solve `loads + relief`, not `relief`
+alone. `accel` is `(6,)` -- the load per unit mass at `about=` (default the origin)
+and the angular acceleration, in `hm.inertial_load`'s gravity-sign convention.
+
+The resultants are the virtual work of every load term on the six rigid-body modes
+and the balance uses the same translational mass model as `hm.inertial_load`, so it
+is exact to round-off on affine cells. The relief acceleration is differentiable in
+the load coefficients, thickness and density, and -- with `geometry=` -- the mesh
+coordinates, including the moving moment arm of a point load.
 
 ## Boundary conditions
 

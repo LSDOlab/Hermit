@@ -33,6 +33,36 @@ _PDE_ATTR = {"thickness": "h"}  # FE arg name -> ShellPDE attribute
 _ORIENTATION_NAMES = ("fiber_angle", "fiber_direction")
 
 
+def _declare_unique_inputs(op, names, fe):
+    """Declare each distinct ``csdl.Variable`` among ``fe.<name>`` once.
+
+    Returns ``{name: declared name}``. csdl keys an operation's inputs by Variable,
+    so declaring one Variable under two names silently keeps only one of them, and
+    reverse mode then fails on the other. It happens whenever two terms share a
+    coefficient -- two inertial loads reading one material's thickness, or
+    ``p + p``. Each name keeps its own FE Function; the alias only says which
+    declared input feeds it and where its derivative accumulates.
+    """
+    alias, first = {}, {}
+    for n in names:
+        var = getattr(fe, n)
+        if id(var) not in first:
+            first[id(var)] = n
+            op.declare_input(n, var)
+        alias[n] = first[id(var)]
+    return alias
+
+
+def _node_input_indices(mesh):
+    """File-order index of each geometry node, as an array this op owns.
+
+    ``geometry.input_global_indices`` is a zero-copy view of the C++ geometry, and
+    a NumPy view keeps its owner alive without any reference ``gc`` can see: stored
+    as is, it would pin the mesh -- and its MPI communicators -- for as long as the
+    op lives, which csdl_alpha makes forever."""
+    return np.array(mesh.geometry.input_global_indices, dtype=np.int64, copy=True)
+
+
 def _share_edge_and_penalty_ds(pde, bc, loads):
     """Return form-local measures sharing one exterior-facet ``MeshTags`` object.
 
@@ -135,8 +165,26 @@ def _loads_key(loads):
     two different compositions would silently apply the wrong physics."""
     if loads is None:
         return None
-    return tuple((item[1], normalize_space(item[2]), id(item[3]) if len(item) == 5 else None)
+    return tuple((item[1], tuple(normalize_space(sp_) for _, sp_ in _term_coefficients(item)),
+                  id(item[3]) if len(item) == 5 else None)
                  for item in loads)
+
+
+def _term_coefficients(item):
+    """``[(argname, space), ...]`` -- the coefficients one load-spec item declares.
+
+    An ``"inertial"`` item is ``(name, "inertial", ((argname, space), ...))`` with
+    its thickness, density and acceleration coefficients, in that order; every other
+    kind is a single ``(argname, kind, space[, ds, facets])`` coefficient."""
+    if item[1] == "inertial":
+        return list(item[2])
+    return [(item[0], item[2])]
+
+
+def _term_coeff(funcs, item):
+    """The ``coeff`` argument of ``load_work`` for one load-spec item."""
+    names = [n for n, _ in _term_coefficients(item)]
+    return tuple(funcs[n] for n in names) if item[1] == "inertial" else funcs[names[0]]
 
 
 class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
@@ -154,7 +202,8 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
         keeps the fixed-space Functions.
 
         ``loads``, given, is a list of ``(argname, kind, space)`` triples: ``kind`` in
-        ``"traction"`` / ``"moment"`` / ``"pressure"``, each routed through
+        ``"traction"`` / ``"moment"`` / ``"pressure"`` (an ``"inertial"`` item lists
+        several coefficients instead -- see ``_term_coefficients``), each routed through
         ``pde.coefficient(argname, space)`` and contributing its own
         residual/compliance term (see ``ElasticModel.weak_residual`` /
         ``ShellPDE.compliance_form``'s ``load_terms``), rather than being reduced onto
@@ -194,8 +243,8 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
             oname, ospace = orientation
             self._funcs[oname] = pde.coefficient(oname, ospace)
         for item in (loads or ()):
-            argname, kind, space = item[:3]
-            self._funcs[argname] = pde.coefficient(argname, space)
+            for argname, space in _term_coefficients(item):
+                self._funcs[argname] = pde.coefficient(argname, space)
 
         # residual / tangent forms + coordinate space are arg-independent (for a given
         # structural key) and built on the PDE's persistent Functions -> memoize
@@ -212,8 +261,8 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
             # list selects the per-term path with that many distributed terms
             # (possibly zero -- a point-load-only Loads has none).
             load_terms = None if loads is None else [
-                (item[1], self._funcs[item[0]]) if len(item) == 3
-                else (item[1], self._funcs[item[0]], item[3])
+                (item[1], _term_coeff(self._funcs, item)) if len(item) == 3
+                else (item[1], _term_coeff(self._funcs, item), item[3])
                 for item in loads
             ]
             residual = pde.residual_form(
@@ -248,7 +297,7 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
                 raise ValueError(f"unknown solve arg {n!r}")
         self.Vc = self._forms["Vc"]
 
-        self._node_idx = np.asarray(pde.mesh.geometry.input_global_indices, dtype=np.int64)
+        self._node_idx = _node_input_indices(pde.mesh)
         self.gdim = pde.mesh.geometry.dim
         self._diff_geometry = "mesh_nodes" in self.arg_names
         self._const_mesh_nodes = None  # captured in evaluate() when geometry isn't a live arg
@@ -259,8 +308,7 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
 
     # -- graph wiring --------------------------------------------------
     def evaluate(self, fe):
-        for n in self.arg_names:
-            self.declare_input(n, getattr(fe, n))
+        self._alias = _declare_unique_inputs(self, self.arg_names, fe)
         if not self._diff_geometry:
             self._const_mesh_nodes = np.asarray(fe.mesh_nodes.value)
         state = self.create_output(self.state_name, (self.ndof,))
@@ -281,7 +329,7 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
         if self._penalty_target is not None:
             fa.set_array(self.pde.g, fa.get_array(self._penalty_target))
         for n in self.arg_names:
-            val = inputs[n]
+            val = inputs[self._alias[n]]
             if n in self._funcs:   # A/B/D/As/thickness/f/m, or the orientation coefficient
                 fa.set_array(self._funcs[n], val)
             elif n == "load_vector":
@@ -356,15 +404,17 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
                 if s in d_outputs:
                     d_residuals[s] += self._matvec(self._A, d_outputs[s])
                 for n in self.arg_names:
-                    if n not in d_inputs:
+                    key = self._alias[n]
+                    if key not in d_inputs:
                         continue
-                    d_residuals[s] += self._dRdp_matvec(n, d_inputs[n], transpose=False)
+                    d_residuals[s] += self._dRdp_matvec(n, d_inputs[key], transpose=False)
             elif mode == "rev":
                 lam = np.asarray(d_residuals[s])
-                for n in self.arg_names:
-                    if n not in d_inputs:
+                for n in self.arg_names:   # an aliased name adds into its declared input
+                    key = self._alias[n]
+                    if key not in d_inputs:
                         continue
-                    d_inputs[n] += self._dRdp_matvec(n, lam, transpose=True).reshape(d_inputs[n].shape)
+                    d_inputs[key] += self._dRdp_matvec(n, lam, transpose=True).reshape(d_inputs[key].shape)
             else:  # pragma: no cover
                 raise ValueError(mode)
         finally:
@@ -465,14 +515,13 @@ class ShellScalarFormsOp(csdl.CustomExplicitOperation):
             else:
                 self._func[n] = getattr(pde, _ARG_TO_PDE[n])
         self._const_mesh_nodes = None
-        self._node_idx = np.asarray(pde.mesh.geometry.input_global_indices, dtype=np.int64)
+        self._node_idx = _node_input_indices(pde.mesh)
         self.gdim = pde.mesh.geometry.dim
         if differentiable_geometry:
             self.Vc = functionspace(pde.mesh, pde.mesh.ufl_domain().ufl_coordinate_element())
 
     def evaluate(self, fe):
-        for n in self.arg_names:
-            self.declare_input(n, getattr(fe, n))
+        self._alias = _declare_unique_inputs(self, self.arg_names, fe)
         if not self._diff_geom:
             self._const_mesh_nodes = np.asarray(fe.mesh_nodes.value)
         out = csdl.VariableGroup()
@@ -481,7 +530,7 @@ class ShellScalarFormsOp(csdl.CustomExplicitOperation):
             v.add_name(name)
             setattr(out, name, v)
         for name, (_, args) in self.forms.items():
-            for a in args:
+            for a in sorted({self._alias[a] for a in args}):
                 self.declare_derivative_parameters(name, a, dependent=True)
             if self._diff_geom:
                 self.declare_derivative_parameters(name, "mesh_nodes", dependent=True)
@@ -491,7 +540,7 @@ class ShellScalarFormsOp(csdl.CustomExplicitOperation):
         mn = input_vals["mesh_nodes"] if self._diff_geom else self._const_mesh_nodes
         self.pde.set_geometry(mn)
         for n, fn in self._func.items():
-            fa.set_array(fn, input_vals[n])
+            fa.set_array(fn, input_vals[self._alias[n]])
 
     def compute(self, input_vals, output_vals):
         self._push(input_vals)
@@ -505,10 +554,13 @@ class ShellScalarFormsOp(csdl.CustomExplicitOperation):
         self._push(input_vals)
         try:
             for name, (form, args) in self.forms.items():
-                for a in args:
-                    derivatives[name, a] = fa.assemble_vector(
-                        ufl.derivative(form, self._func[a])
-                    ).reshape(1, -1)
+                partials = {}
+                for a in args:   # an aliased name adds into its declared input
+                    d = fa.assemble_vector(ufl.derivative(form, self._func[a])).reshape(1, -1)
+                    key = self._alias[a]
+                    partials[key] = d if key not in partials else partials[key] + d
+                for key, d in partials.items():
+                    derivatives[name, key] = d
                 if self._diff_geom:
                     g = fa.assemble_vector(
                         ufl.derivative(form, self.pde.X, ufl.TestFunction(self.Vc))
@@ -675,7 +727,7 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
         self.gdim = pde.mesh.geometry.dim
         self.tdim = pde.mesh.topology.dim
         self.nel = pde.mesh.topology.index_map(self.tdim).size_local
-        self._node_idx = np.asarray(pde.mesh.geometry.input_global_indices, dtype=np.int64)
+        self._node_idx = _node_input_indices(pde.mesh)
         self._const_mesh_nodes = None
         if differentiable_geometry:
             self.Vc = functionspace(pde.mesh, pde.mesh.ufl_domain().ufl_coordinate_element())
@@ -722,8 +774,7 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
 
     # -- graph wiring ------------------------------------------------------
     def evaluate(self, fe):
-        for a in self.arg_names:
-            self.declare_input(a, getattr(fe, a))
+        self._alias = _declare_unique_inputs(self, self.arg_names, fe)
         if self._diff_geom:
             self.declare_input("mesh_nodes", fe.mesh_nodes)
         else:
@@ -733,7 +784,7 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
             v = self.create_output(name, (self._nsd[name], s.n_components))
             v.add_name(name)
             setattr(out, name, v)
-            for a in s.args:
+            for a in sorted({self._alias[a] for a in s.args}):
                 self.declare_derivative_parameters(name, a, dependent=True)
             if self._diff_geom and s.method != "interpolate":
                 self.declare_derivative_parameters(name, "mesh_nodes", dependent=True)
@@ -744,7 +795,7 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
         mn = input_vals["mesh_nodes"] if self._diff_geom else self._const_mesh_nodes
         self.pde.set_geometry(mn)
         for a in self.arg_names:
-            fa.set_array(self._func[a], input_vals[a])
+            fa.set_array(self._func[a], input_vals[self._alias[a]])
 
     def _mass_ksp(self, name):
         """MUMPS factorization of the scalar target-space mass matrix.
@@ -814,9 +865,10 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
 
     def _vjp_field(self, name, s, lam, cval, d_inputs, tc, geom):
         if s.method == "interpolate":
-            for a in s.args:
-                if a in d_inputs:
-                    d_inputs[a] += (self._interp_jac(name, a).T @ lam).reshape(d_inputs[a].shape)
+            for a in s.args:   # an aliased name adds into its declared input
+                key = self._alias[a]
+                if key in d_inputs:
+                    d_inputs[key] += (self._interp_jac(name, a).T @ lam).reshape(d_inputs[key].shape)
             return
 
         L = self._L[name]
@@ -828,10 +880,11 @@ class ShellFieldFormsOp(csdl.CustomExplicitOperation):
             lam_t = self._msolve(self._mass_ksp(name), lam, s.n_components)
 
         for a in s.args:
-            if a not in d_inputs:
+            key = self._alias[a]
+            if key not in d_inputs:
                 continue
             dLda = fa.assemble_matrix(ufl.derivative(L, self._func[a]))
-            d_inputs[a] += _mat_tvec(dLda, lam_t).reshape(d_inputs[a].shape)
+            d_inputs[key] += _mat_tvec(dLda, lam_t).reshape(d_inputs[key].shape)
 
         if not self._diff_geom or "mesh_nodes" not in d_inputs:
             return

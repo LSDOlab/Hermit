@@ -16,11 +16,10 @@ import ufl
 from . import csdl_helpers as H
 from .failure import failure_field as _failure_field
 from .failure import failure_index as _failure_index
-from .fenics.ops import FieldSpec, ShellFieldFormsOp, ShellScalarFormsOp, _share_edge_and_penalty_ds
-from .fenics.bcs import BCData
+from .fenics.ops import FieldSpec, ShellFieldFormsOp, ShellScalarFormsOp
 from .fenics.ops import strain_fields as _strain_specs
 from .fenics.spaces import _ELEMENTS
-from ._solve import _pde_for
+from ._solve import _load_work_terms, _pde_for
 
 
 def _pde(state):
@@ -103,29 +102,8 @@ def compliance(state):
         edge and point terms.
     """
     pde = _pde(state)
-    args, values, coefficients, terms = ["disp_solid"], {}, {}, []
-    for kind, fields in (("traction", state.loads.traction_terms),
-                         ("moment", state.loads.moment_terms),
-                         ("pressure", state.loads.pressure_terms)):
-        for i, field in enumerate(fields):
-            name = f"{kind}_{i}"
-            args.append(name); values[name] = field.coeffs; coefficients[name] = field.space
-            terms.append((kind, pde.coefficient(name, field.space)))
-    edge_specs, edge_fields = [], {}
-    for kind, edge_terms in (("traction", state.loads.edge_traction_terms),
-                             ("moment", state.loads.edge_moment_terms),
-                             ("pressure", state.loads.edge_pressure_terms)):
-        for i, edge in enumerate(edge_terms):
-            name = f"edge_{kind}_{i}"
-            edge_specs.append((name, kind, edge.field.space, edge.ds, edge.facets))
-            edge_fields[name] = edge.field
-    # A compliance form has no BC terms, but several edge loads still need one
-    # shared tagged ds object (the same DOLFINx constraint as the residual).
-    _, edge_specs = _share_edge_and_penalty_ds(pde, BCData(penalty=False), edge_specs)
-    for name, kind, space, ds, _ in edge_specs:
-        edge = edge_fields[name]
-        args.append(name); values[name] = edge.coeffs; coefficients[name] = edge.space
-        terms.append((kind, pde.coefficient(name, edge.space), ds))
+    terms, term_args, values, coefficients = _load_work_terms(pde, state.loads)
+    args = ["disp_solid"] + [a for names in term_args for a in names]
     form = pde.compliance_form(loads=terms)
     value = _scalar(state, form, args, values, coefficients)
     return value + csdl.vdot(state.loads.direct_vector(), state.disp_solid)

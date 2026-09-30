@@ -14,7 +14,7 @@ shadow the public function of the same name. ``import hermit.solve`` would other
 rebind ``hermit.solve`` from the function to the module -- silently, with no error.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from . import _compat as _compat  # noqa: E402  (DOLFINx 0.9 / 0.11 shims)
 from . import _ufl_compat as _ufl_compat  # noqa: E402
@@ -59,6 +59,7 @@ from .loads import (  # noqa: E402
     edge_moment,
     edge_pressure,
     edge_traction,
+    inertial_load,
     load_vector,
     moment,
     point_load,
@@ -66,6 +67,7 @@ from .loads import (  # noqa: E402
     traction,
 )
 from ._solve import ShellState, solve  # noqa: E402
+from ._inertia_relief import inertia_relief  # noqa: E402
 from .outputs import (  # noqa: E402
     aggregated_stress,
     center_of_gravity,
@@ -117,6 +119,8 @@ __all__ = [
     "from_nodal",
     "gauge",
     "geometry",
+    "inertia_relief",
+    "inertial_load",
     "interpolate",
     "isotropic",
     "laminate",

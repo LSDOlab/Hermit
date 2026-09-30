@@ -88,7 +88,15 @@ def _build_interp_matrix(domain, src_space, tgt_space):
             "Use project() instead (it consumes the source as an ordinary UFL "
             "coefficient, which quadrature elements support).")
     V_tgt = domain.function_space(tgt_space)
+    return interpolation_matrix(domain.mesh, V_src, V_tgt)
 
+
+def interpolation_matrix(mesh, V_src, V_tgt):
+    """Sparse matrix taking ``V_src`` dofs to their interpolant's ``V_tgt`` dofs,
+    both in FE (blocked, component-interleaved) order.
+
+    Built from reference-cell tabulations only, so for Lagrange spaces on a fixed
+    topology it does not depend on the node positions."""
     # phi_source, evaluated at the target's reference interpolation points: exactly
     # ShellFieldFormsOp._interp_jac's construction, with the arbitrary "field
     # expression" specialised to the source Function itself (so its derivative is
@@ -98,8 +106,8 @@ def _build_interp_matrix(domain, src_space, tgt_space):
     trial = ufl.TrialFunction(V_src)
     expr = Expression(ufl.derivative(src_fn, src_fn, trial), pts)
 
-    nel = domain.n_cells
-    vj = np.asarray(expr.eval(domain.mesh, np.arange(nel, dtype=np.int32)))
+    nel = mesh.topology.index_map(mesh.topology.dim).size_local
+    vj = np.asarray(expr.eval(mesh, np.arange(nel, dtype=np.int32)))
 
     nn = np.asarray(V_tgt.dofmap.list)                     # (nel, n_local_tgt_nodes)
     npts = nn.shape[1]

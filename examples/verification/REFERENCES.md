@@ -10,6 +10,7 @@ constant, which needs a real citation and an independent check).
 | benchmark | quantity | reference | tolerance | source |
 |---|---|---|---|---|
 | `ex_analytic_compliance_gradient` | dC/dt (CSDL) / (-3 C/t) | 1 | 0.01 | Euler--Bernoulli pure-bending scaling: D = E t^3 / [12(1-nu^2)] |
+| `ex_cantilever_self_weight` | vertical displacement at the tip-edge midpoint | 0.00851835 | 0.02 | Computed Timoshenko beam formula in this file |
 | `ex_cantilever_tip_load` | vertical displacement at the tip-edge midpoint | 0.000578843 | 0.02 | Computed Timoshenko beam formula in this file |
 | `ex_cantilever_tip_moment` | maximum relative error of tip deflection and y rotation | 0 | 1e-07 | Computed Euler-Bernoulli constant-curvature formulas in this file |
 | `ex_cantilever_uniform_pressure` | vertical displacement at the tip-edge midpoint | 0.00868333 | 0.02 | Computed Timoshenko beam formula in this file |
@@ -22,6 +23,7 @@ constant, which needs a real citation and an independent check).
 | `ex_elastic_energy_identity` | largest relative energy-identity residual for pressure and point loads | 0 | 1e-07 | Hermit outputs.py: elastic_energy and compliance conventions |
 | `ex_gradient_finite_difference` | 1 - best relative CSDL/FD gradient error | 1 | 0.002 | Second-order central-difference formula, evaluated by this script |
 | `ex_hypar_warped_quad` | global-z deflection at the centre of the free edge | 0.92118 | 0.02 | Computed in this file: triangle n=64 = 0.92117998; n=48 differs by 1.16e-4 relative on the same geometry. Triangles are planar and objective under the compared curvature formulations |
+| `ex_inertia_relief_free_beam` | tip deflection relative to the centre | 9.04919e-05 | 0.02 | Computed Timoshenko beam formula in this file |
 | `ex_laminate_matches_isotropic` | maximum relative compliance, mass, or tip-displacement difference | 0 | 1e-08 | same-run hm.isotropic solution; identical isotropic CLT constitutive law |
 | `ex_mass_and_cg` | maximum absolute residual across uniform and graded exact mass/CG | 0 | 1e-10 | Closed-form area integrals computed in this file |
 | `ex_optimal_thickness_taper` | optimiser-recovered exponent p in t(x) = A ((L-x)/L)**p | 1 | 0.05 | Computed in this file: minimising int M^2/t^3 at fixed int t gives t proportional to sqrt(M), hence (L-x) under uniform load; cross-checked against a direct 1-D SLSQP solve to 2.4e-6 |

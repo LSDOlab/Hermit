@@ -57,15 +57,30 @@ def release(op) -> None:
             _destroy(m)
         _destroy(getattr(op, "_ksp", None))
         _destroy(getattr(op, "_A", None))
+        # _penalty_target is the BC's prescribed-value Function: missed, it keeps a
+        # function space and the mesh (and their communicators) alive per solve
         _clear(op, "_dRdf", "_ksp", "_A", "_funcs", "_forms", "_dR_form",
-               "residual", "dR_dw", "Vc", "pde", "bc")
+               "residual", "dR_dw", "Vc", "pde", "bc", "_penalty_target")
     elif isinstance(op, ShellScalarFormsOp):
         _clear(op, "_func", "forms", "Vc", "pde")
     elif isinstance(op, ShellFieldFormsOp):
         for ksp in getattr(op, "_ksp", {}).values():
             _destroy(ksp)
         _clear(op, "_ksp", "_holder", "_func", "space", "_L", "_vol", "_Mform",
-               "_iexpr", "_ijexpr", "_ipts", "fields", "Vc")
+               "_iexpr", "_ijexpr", "_ipts", "fields", "Vc", "pde")
+    elif isinstance(op, _project_op_type()):
+        _destroy(getattr(op, "_ksp", None))
+        _clear(op, "_ksp", "_src_fn", "_c_fn", "_L", "_Mform", "X", "Vc", "mesh", "domain")
+
+
+def _project_op_type():
+    """``hermit.transfer._ProjectOp`` (``hm.project``), imported lazily: it lives in
+    the CSDL-side package, above this module."""
+    try:
+        from ..transfer import _ProjectOp
+    except Exception:  # pragma: no cover - transfer should always import
+        return ()
+    return _ProjectOp
 
 
 def release_fe_resources() -> int:
@@ -75,7 +90,7 @@ def release_fe_resources() -> int:
     """
     from .ops import ShellSolveOp, ShellScalarFormsOp, ShellFieldFormsOp
 
-    op_types = (ShellSolveOp, ShellScalarFormsOp, ShellFieldFormsOp)
+    op_types = (ShellSolveOp, ShellScalarFormsOp, ShellFieldFormsOp, _project_op_type())
     try:
         from ..domain import ShellDomain
     except Exception:  # pragma: no cover - domain module should always import
