@@ -6,6 +6,7 @@ holding that vector is the work of the *discrete* loads on it -- distributed, ed
 inertial and point terms alike. ``loads + relief`` must do no work on any of them.
 """
 
+import functools
 import pathlib
 import sys
 
@@ -160,11 +161,18 @@ def test_force_through_the_center_of_gravity(recorder):
                                atol=1e-12)
 
 
+@functools.cache
+def _fd_mesh():
+    """One mesh for every evaluation -- fresh-mesh solves leak MPI contexts (see
+    test_cleanup.py)."""
+    return rect_plate(10.0, 2.0, 8, 4, cell="triangle")
+
+
 def _relief_compliance(params, *, derivative):
     """Compliance of a free, relieved plate under pressure and a point load, with
     its derivatives in the thickness scale, pressure and a shape perturbation."""
     rec = csdl.Recorder(inline=True); rec.start()
-    domain = hm.ShellDomain(rect_plate(10.0, 2.0, 8, 4, cell="triangle"))
+    domain = hm.ShellDomain(_fd_mesh())
     x = domain.node_coords
     t = csdl.Variable(value=params["t"], name="t")
     p = csdl.Variable(value=params["p"], name="p")
