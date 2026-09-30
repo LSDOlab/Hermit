@@ -169,23 +169,34 @@ def _fd_mesh():
 
 
 def _relief_compliance(params, *, derivative):
-    """Compliance of a free, relieved plate under pressure and a point load, with
-    its derivatives in the thickness scale, pressure and a shape perturbation."""
+    """Compliance of a free, relieved plate under pressure, self weight and a point
+    load, with its derivatives in the thickness scale, the density of one half of
+    the plate, the pressure, the point force and a shape perturbation.
+
+    The density is non-uniform on purpose: scaling a uniform density scales the
+    relief acceleration by its inverse, so the relief load -- and the compliance --
+    would not depend on it at all, and a dropped density derivative would pass as
+    0 == 0."""
     rec = csdl.Recorder(inline=True); rec.start()
     domain = hm.ShellDomain(_fd_mesh())
     x = domain.node_coords
     t = csdl.Variable(value=params["t"], name="t")
+    rho = csdl.Variable(value=params["rho"], name="rho")
     p = csdl.Variable(value=params["p"], name="p")
+    f = csdl.Variable(value=params["f"], name="f")
     s = csdl.Variable(value=params["s"], name="s")
     bump = np.zeros_like(x)
     bump[:, 2] = np.sin(np.pi * x[:, 0] / 10.0) * x[:, 1] / 2.0
     bump[:, 0] = 0.3 * x[:, 1] * x[:, 0] / 10.0
     geometry = hm.geometry(domain, node_disp=s * csdl.Variable(value=bump))
     thickness = t * csdl.Variable(value=T + 0.01 * x[:, 0])
+    near_root = (domain.cell_centroids[:, 0] < 5.0).astype(float)
+    density = rho * csdl.Variable(value=near_root) + csdl.Variable(value=RHO * (1.0 - near_root))
     material = hm.isotropic(domain, E=E, nu=NU, thickness=hm.from_nodal(domain, thickness),
-                            density=RHO)
+                            density=hm.from_cells(domain, density))
     loads = (hm.pressure(domain, hm.from_cells(domain, (domain.cell_centroids[:, 0] < 4.0) * p))
-             + hm.point_load(domain, at=[8.0, 1.5, 0.0], force=[0.0, 2.0, 20.0]))
+             + hm.inertial_load(domain, material, acceleration=[0.0, 0.0, -9.81])
+             + hm.point_load(domain, at=[8.0, 1.5, 0.0], force=f))
     relief, _ = hm.inertia_relief(domain, material, loads, geometry=geometry)
     state = hm.solve(domain, material, loads + relief,
                      hm.gauge(domain, at=[0.0, 0.0, 0.0], dofs=ALL_DOFS), geometry=geometry)
@@ -193,22 +204,31 @@ def _relief_compliance(params, *, derivative):
     value = float(c.value[0])
     grads = None
     if derivative:
-        totals = csdl.experimental.PySimulator(rec).compute_totals([c], [t, p, s])
-        grads = {v.name: float(np.ravel(totals[c, v])[0]) for v in (t, p, s)}
+        wrt = [t, rho, p, f, s]
+        totals = csdl.experimental.PySimulator(rec).compute_totals([c], wrt)
+        grads = {v.name: np.ravel(np.asarray(totals[c, v])) for v in wrt}
     rec.stop()
     return value, grads
 
 
 def test_derivatives_match_finite_differences():
-    base = dict(t=1.0, p=5.0, s=0.05)
+    base = dict(t=1.0, rho=5.0, p=5.0, f=np.array([1.0, 2.0, 20.0]), s=0.05)
     _, grads = _relief_compliance(base, derivative=True)
     # steps sized against the solve's round-off; see test_inertial_load.py
-    for name, h in (("t", 1e-4), ("p", 1e-3), ("s", 1e-3)):
-        fp, _ = _relief_compliance({**base, name: base[name] + h}, derivative=False)
-        fm, _ = _relief_compliance({**base, name: base[name] - h}, derivative=False)
-        fd = (fp - fm) / (2 * h)
-        print(f"\nd compliance / d {name}: adjoint={grads[name]:.10e} fd={fd:.10e}")
-        assert grads[name] == pytest.approx(fd, rel=1e-5)
+    for name, h in (("t", 1e-4), ("rho", 1e-3), ("p", 1e-3), ("f", 1e-3), ("s", 1e-3)):
+        value = np.atleast_1d(base[name]).astype(float)
+        fd = np.empty(value.size)
+        for k in range(value.size):
+            plus, minus = value.copy(), value.copy()
+            plus[k] += h; minus[k] -= h
+            fp, _ = _relief_compliance({**base, name: plus if value.size > 1 else plus[0]},
+                                       derivative=False)
+            fm, _ = _relief_compliance({**base, name: minus if value.size > 1 else minus[0]},
+                                       derivative=False)
+            fd[k] = (fp - fm) / (2 * h)
+        print(f"\nd compliance / d {name}: adjoint={grads[name]} fd={fd}")
+        assert np.all(np.abs(fd) > 0), f"{name}: a zero sensitivity cannot catch a dropped derivative"
+        np.testing.assert_allclose(grads[name], fd, rtol=1e-5)
 
 
 def test_rejects_inputs_from_another_domain(recorder):
