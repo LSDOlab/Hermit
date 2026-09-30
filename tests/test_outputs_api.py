@@ -96,6 +96,21 @@ def test_stress_field_methods_scaling_and_bending_sanity(plate_mesh, cantilever_
     assert 0.5 < hand_ratio < 2.0
 
 
+def test_stress_surface_names(plate_mesh, cantilever_ref, recorder):
+    """``'bottom'`` is the documented surface name (it used to raise); ``'bot'``, the
+    only name accepted before, stays as an alias."""
+    state = _state(plate_mesh, cantilever_ref)
+    bottom = out.stress_field(state, surface="bottom").coeffs.value
+    np.testing.assert_array_equal(bottom, out.stress_field(state, surface="bot").coeffs.value)
+    # a laterally loaded plate with nu = 0 is in pure bending: the mid-surface is
+    # unstressed and the faces are not
+    assert _max(out.stress_field(state, surface="mid")) < 1e-6 * np.abs(bottom).max()
+    assert float(out.pnorm_stress(state, surface="bottom").value[0]) == pytest.approx(
+        float(out.pnorm_stress(state, surface="bot").value[0]), rel=1e-14)
+    with pytest.raises(ValueError, match="'top', 'mid' or 'bottom', got 'bottm'"):
+        out.stress_field(state, surface="bottm")
+
+
 def test_aggregated_stress_brackets_field_max_when_scaled(plate_mesh, cantilever_ref, recorder):
     """With ``m ~ 1/max(vm)`` the aggregate tracks the stress field -- from *below*.
 

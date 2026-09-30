@@ -215,10 +215,12 @@ class ShellPDE:
         t = self.h if thickness is None else thickness
         E = self.E if E is None else E
         nu = self.nu if nu is None else nu
+        # "bottom" is the documented spelling; "bot" was the only one accepted until
+        # 0.1.0 and stays as an alias.
         try:
-            xi2 = {"top": t / 2, "mid": 0.0, "bot": -t / 2}[surface]
+            xi2 = {"top": t / 2, "mid": 0.0, "bottom": -t / 2, "bot": -t / 2}[surface]
         except KeyError:
-            raise ValueError("surface must be 'top', 'mid', or 'bot'") from None
+            raise ValueError(f"surface must be 'top', 'mid' or 'bottom', got {surface!r}") from None
         em = self.elastic_model()
         s = ShellStressRM(self.mesh, self.w, t, E, nu,
                           strains=(em.eps, em.kappa, em.gamma))
