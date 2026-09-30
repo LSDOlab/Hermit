@@ -178,21 +178,20 @@ def test_derivatives_match_finite_differences():
     base = dict(t=1.0, rho=3.0, a=np.array([0.5, -1.0, -9.81]),
                 alpha=np.array([0.2, -0.1, 0.3]), s=0.05)
     _, grads = _compliance_and_gradients(base, derivative=True)
-    # Steps are large on purpose. The solve's round-off (~1e-9 relative in the
-    # compliance, with or without the inertial term) swamps a 1e-6 difference
-    # quotient; the shape derivative is small against the compliance on this warped
-    # plate, so it needs a larger step again.
-    for name, h in (("t", 1e-4), ("rho", 3e-4), ("a", 1e-3), ("alpha", 1e-4), ("s", 1e-3)):
+    # Fourth-order differences with deliberately large steps. The solve's round-off
+    # is ~1e-9 relative in the compliance on this warped plate; a 1e-3 central
+    # difference amplifies it to ~1e-5 -- enough to fail on CI's BLAS/MUMPS while
+    # passing locally. The shape derivative is small against the compliance, so it
+    # gets the largest step.
+    for name, h in (("t", 1e-3), ("rho", 1e-2), ("a", 1e-2), ("alpha", 1e-3), ("s", 2e-2)):
         value = np.atleast_1d(base[name]).astype(float)
         fd = np.empty(value.size)
         for k in range(value.size):
-            plus, minus = value.copy(), value.copy()
-            plus[k] += h; minus[k] -= h
-            fp, _ = _compliance_and_gradients({**base, name: plus if value.size > 1 else plus[0]},
-                                              derivative=False)
-            fm, _ = _compliance_and_gradients({**base, name: minus if value.size > 1 else minus[0]},
-                                              derivative=False)
-            fd[k] = (fp - fm) / (2 * h)
+            def at(offset):
+                v = value.copy(); v[k] += offset
+                return _compliance_and_gradients({**base, name: v if value.size > 1 else v[0]},
+                                                 derivative=False)[0]
+            fd[k] = (-at(2 * h) + 8 * at(h) - 8 * at(-h) + at(-2 * h)) / (12 * h)
         print(f"\nd compliance / d {name}: adjoint={grads[name]} fd={fd}")
         np.testing.assert_allclose(grads[name], fd, rtol=1e-5, atol=1e-8 * np.max(np.abs(fd)))
 

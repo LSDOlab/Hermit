@@ -214,18 +214,17 @@ def _relief_compliance(params, *, derivative):
 def test_derivatives_match_finite_differences():
     base = dict(t=1.0, rho=5.0, p=5.0, f=np.array([1.0, 2.0, 20.0]), s=0.05)
     _, grads = _relief_compliance(base, derivative=True)
-    # steps sized against the solve's round-off; see test_inertial_load.py
-    for name, h in (("t", 1e-4), ("rho", 1e-3), ("p", 1e-3), ("f", 1e-3), ("s", 1e-3)):
+    # fourth-order differences, steps sized against the solve's round-off; see
+    # test_inertial_load.py
+    for name, h in (("t", 1e-3), ("rho", 1e-2), ("p", 1e-2), ("f", 1e-2), ("s", 2e-2)):
         value = np.atleast_1d(base[name]).astype(float)
         fd = np.empty(value.size)
         for k in range(value.size):
-            plus, minus = value.copy(), value.copy()
-            plus[k] += h; minus[k] -= h
-            fp, _ = _relief_compliance({**base, name: plus if value.size > 1 else plus[0]},
-                                       derivative=False)
-            fm, _ = _relief_compliance({**base, name: minus if value.size > 1 else minus[0]},
-                                       derivative=False)
-            fd[k] = (fp - fm) / (2 * h)
+            def at(offset):
+                v = value.copy(); v[k] += offset
+                return _relief_compliance({**base, name: v if value.size > 1 else v[0]},
+                                          derivative=False)[0]
+            fd[k] = (-at(2 * h) + 8 * at(h) - 8 * at(-h) + at(-2 * h)) / (12 * h)
         print(f"\nd compliance / d {name}: adjoint={grads[name]} fd={fd}")
         assert np.all(np.abs(fd) > 0), f"{name}: a zero sensitivity cannot catch a dropped derivative"
         np.testing.assert_allclose(grads[name], fd, rtol=1e-5)
