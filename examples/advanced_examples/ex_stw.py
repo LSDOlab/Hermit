@@ -24,9 +24,10 @@ mass constraint at the baseline mass, PySLSQP -- on a real wingbox instead of a 
   keeps this well posed, unlike the free nodal field of ``ex_thickness_opt.py``.
 * **Loads**: the benchmark's structural load case -- a uniform 30 kPa pressure on
   the lower skin, pushing up into the box, plus the 2.5 g inertial load of the
-  structure itself, ``2.5 g * density * thickness`` per unit area, downward. The
-  inertial load depends on the thickness design variables, and the compliance
-  (work of both loads) accounts for that.
+  structure itself, ``hm.inertial_load`` at ``2.5 * [0, 0, -9.81]``: ``2.5 g *
+  density * thickness`` per unit area, downward. It reads the thickness from the
+  material, so it follows the design variables, and the compliance (work of both
+  loads) accounts for that.
 * **Winding**: ``hm.pressure`` acts along the cell normal, so the cells are re-wound
   to point out of the box (skins up/down, spars fore/aft, the root rib inboard,
   every other rib outboard). The BDF's own winding is not consistent;
@@ -224,10 +225,7 @@ def main(level=LEVEL, bdf=None, out=None):
 
     # the outward normal of the lower skin points down, so pushing up is negative p
     pressure = hm.pressure(domain, hm.from_cells(domain, np.where(lower, -PRESSURE, 0.0)))
-    # per-cell (0, 0, -n g rho t), flattened row-major, straight from the panel thicknesses
-    weight = sp.kron(scatter, np.array([[0.0], [0.0], [-LOAD_FACTOR * G * RHO_VAL]]))
-    inertial = hm.traction(domain, hm.from_cells(
-        domain, csdl.sparse.matvec(weight.tocsr(), thickness).reshape((n_cells, 3))))
+    inertial = hm.inertial_load(domain, material, acceleration=[0.0, 0.0, -LOAD_FACTOR * G])
     loads = pressure + inertial
 
     pins = [hm.pin(domain, where=at_nodes(points[nodes]), dofs=[_DOF_NAMES[c] for c in comp])
