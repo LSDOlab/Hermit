@@ -125,7 +125,10 @@ def test_pin_all_dofs_equals_clamp(plate_mesh, ref_args, recorder):
 
     a = _run(plate_mesh, **ref_args, make_bcs=clamp_bc)
     b = _run(plate_mesh, **ref_args, make_bcs=pin_all_bc)
-    assert np.array_equal(a.disp_solid.value, b.disp_solid.value)
+    # Same system, so equal up to the direct solver's round-off -- not bitwise: CI
+    # runners have differed in the last bits (~1e-14 relative) on both 0.9 and 0.11.
+    ua, ub = np.asarray(a.disp_solid.value), np.asarray(b.disp_solid.value)
+    np.testing.assert_allclose(ub, ua, rtol=0, atol=1e-12 * np.max(np.abs(ua)))
 
 
 @pytest.mark.parametrize("dofs,expected_mask", [
