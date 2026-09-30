@@ -57,8 +57,10 @@ def release(op) -> None:
             _destroy(m)
         _destroy(getattr(op, "_ksp", None))
         _destroy(getattr(op, "_A", None))
+        # _penalty_target is the BC's prescribed-value Function: missed, it keeps a
+        # function space and the mesh (and their communicators) alive per solve
         _clear(op, "_dRdf", "_ksp", "_A", "_funcs", "_forms", "_dR_form",
-               "residual", "dR_dw", "Vc", "pde", "bc")
+               "residual", "dR_dw", "Vc", "pde", "bc", "_penalty_target")
     elif isinstance(op, ShellScalarFormsOp):
         _clear(op, "_func", "forms", "Vc", "pde")
     elif isinstance(op, ShellFieldFormsOp):
