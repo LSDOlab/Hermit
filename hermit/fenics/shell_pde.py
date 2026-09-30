@@ -166,6 +166,12 @@ class ShellPDE:
         u_mid, theta = ufl.split(self.w)
         if loads is None:
             return ufl.inner(u_mid, self.f) * ufl.dx + ufl.inner(theta, self.m) * ufl.dx
+        return self.load_work_form(loads, u_mid, theta)
+
+    def load_work_form(self, loads, u_mid, theta):
+        """Virtual work of the ``(kind, coeff[, measure])`` load terms on any
+        displacement pair -- the solution for the compliance, a rigid-body mode for
+        a load resultant. A zero form when there are no terms."""
         E2 = local_basis_inplane(self.mesh)[2]
         total = None
         for item in loads:

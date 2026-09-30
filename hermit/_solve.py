@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from .fenics.ops import ShellSolveOp
+from .fenics.bcs import BCData
+from .fenics.ops import ShellSolveOp, _share_edge_and_penalty_ds
 from .fenics.shell_pde import ShellPDE
 from ._geometry import geometry as _geometry
 
@@ -128,6 +129,52 @@ def _load_terms(loads):
         spec.append((f"inertial_{i}", "inertial", tuple((n, sp_) for n, sp_, _ in coeffs)))
         values.update({n: v for n, _, v in coeffs})
     return arg_names, spec, values
+
+
+def _load_work_terms(pde, loads):
+    """Every distributed, edge and inertial term of ``loads`` as form input for
+    ``ShellPDE.load_work_form``.
+
+    Returns ``(terms, term_args, values, coefficients)``: ``terms`` the
+    ``(kind, coeff[, measure])`` list; ``term_args[i]`` the argument names term ``i``
+    reads; ``values`` / ``coefficients`` map each name to its CSDL coefficients and
+    space. Edge terms share one tagged ``ds``, as DOLFINx needs within a form. The
+    direct right-hand side has no form and is not included.
+    """
+    terms, term_args, values, coefficients = [], [], {}, {}
+
+    def _declare(name, space, coeffs):
+        values[name] = coeffs
+        coefficients[name] = space
+        return pde.coefficient(name, space)
+
+    for kind, fields in (("traction", loads.traction_terms),
+                         ("moment", loads.moment_terms),
+                         ("pressure", loads.pressure_terms)):
+        for i, field in enumerate(fields):
+            name = f"{kind}_{i}"
+            terms.append((kind, _declare(name, field.space, field.coeffs)))
+            term_args.append((name,))
+    for i, term in enumerate(loads.inertial_terms):
+        coeffs = term.coefficients(f"inertial_{i}")
+        terms.append(("inertial", tuple(_declare(*c) for c in coeffs)))
+        term_args.append(tuple(n for n, _, _ in coeffs))
+    edge_specs, edge_fields = [], {}
+    for kind, edge_terms in (("traction", loads.edge_traction_terms),
+                             ("moment", loads.edge_moment_terms),
+                             ("pressure", loads.edge_pressure_terms)):
+        for i, edge in enumerate(edge_terms):
+            name = f"edge_{kind}_{i}"
+            edge_specs.append((name, kind, edge.field.space, edge.ds, edge.facets))
+            edge_fields[name] = edge.field
+    # No BC terms here, but several edge loads still need one shared tagged ds
+    # object (the same DOLFINx constraint as the residual).
+    _, edge_specs = _share_edge_and_penalty_ds(pde, BCData(penalty=False), edge_specs)
+    for name, kind, _, ds, _ in edge_specs:
+        field = edge_fields[name]
+        terms.append((kind, _declare(name, field.space, field.coeffs), ds))
+        term_args.append((name,))
+    return terms, term_args, values, coefficients
 
 
 def solve(domain, material, loads, bcs, *, geometry=None) -> ShellState:

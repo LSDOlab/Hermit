@@ -150,6 +150,31 @@ point, so its right-hand side does not depend on the mesh coordinates at all and
 shape derivative is exact; a load pinned to a fixed spatial point is not supported. `hm.load_vector(domain, vec)` supplies a generalized
 right-hand side directly, in `domain.W` dof order.
 
+### Inertia relief
+
+A free structure -- an aircraft in flight, a satellite -- has no supports to react
+its loads. `hm.inertia_relief(domain, material, loads)` finds the rigid-body
+acceleration at which the structure's own inertia balances the force and moment
+resultants of `loads`, and returns that inertial load and the acceleration:
+
+```python
+relief, accel = hm.inertia_relief(domain, material, loads)
+support = hm.gauge(domain, at=p, dofs=("ux", "uy", "uz", "rx", "ry", "rz"))
+state = hm.solve(domain, material, loads + relief, support)
+```
+
+The stiffness of a free structure is still singular, so the gauge is needed; because
+`loads + relief` is self-equilibrated it carries no reaction, and moving it changes
+the displacement only by a rigid-body motion. Solve `loads + relief`, not `relief`
+alone. `accel` is `(6,)` -- the load per unit mass at `about=` (default the origin)
+and the angular acceleration, in `hm.inertial_load`'s gravity-sign convention.
+
+The resultants are the virtual work of every load term on the six rigid-body modes
+and the balance uses the same translational mass model as `hm.inertial_load`, so it
+is exact to round-off on affine cells. The relief acceleration is differentiable in
+the load coefficients, thickness and density, and -- with `geometry=` -- the mesh
+coordinates, including the moving moment arm of a point load.
+
 ## Boundary conditions
 
 Two paths select a region with a coordinate predicate:

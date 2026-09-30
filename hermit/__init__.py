@@ -67,6 +67,7 @@ from .loads import (  # noqa: E402
     traction,
 )
 from ._solve import ShellState, solve  # noqa: E402
+from ._inertia_relief import inertia_relief  # noqa: E402
 from .outputs import (  # noqa: E402
     aggregated_stress,
     center_of_gravity,
@@ -118,6 +119,7 @@ __all__ = [
     "from_nodal",
     "gauge",
     "geometry",
+    "inertia_relief",
     "inertial_load",
     "interpolate",
     "isotropic",

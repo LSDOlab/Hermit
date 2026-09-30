@@ -56,9 +56,10 @@ consume fewer inputs than the FE solve — build a thickness-only material with
   it is differentiable and correct on a continuous orientation field.
 - **Loads:** `pressure` (follows the shell normal), `traction`, `moment`,
   `inertial_load` (self weight / manoeuvre loads from the material's mass),
-  `point_load`, or a direct generalized `load_vector`; `edge_pressure` / `edge_traction` /
-  `edge_moment` apply the same loads per unit length on exterior facets a `where=`
-  predicate selects.
+  `point_load`, or a direct generalized `load_vector`; `edge_pressure` /
+  `edge_traction` / `edge_moment` apply the same loads per unit length on exterior
+  facets a `where=` predicate selects. `inertia_relief` returns the inertial load
+  that balances the loads on a free structure.
 - **Boundary conditions:** `clamp` / `pin` / `symmetry` / `gauge`, penalty (default) or
   strong Dirichlet, on a region predicate; `near` / `on_plane` build the predicates.
   Every builder takes `value=` for a non-zero prescribed displacement or rotation

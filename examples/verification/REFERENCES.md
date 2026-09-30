@@ -23,6 +23,7 @@ constant, which needs a real citation and an independent check).
 | `ex_elastic_energy_identity` | largest relative energy-identity residual for pressure and point loads | 0 | 1e-07 | Hermit outputs.py: elastic_energy and compliance conventions |
 | `ex_gradient_finite_difference` | 1 - best relative CSDL/FD gradient error | 1 | 0.002 | Second-order central-difference formula, evaluated by this script |
 | `ex_hypar_warped_quad` | global-z deflection at the centre of the free edge | 0.92118 | 0.02 | Computed in this file: triangle n=64 = 0.92117998; n=48 differs by 1.16e-4 relative on the same geometry. Triangles are planar and objective under the compared curvature formulations |
+| `ex_inertia_relief_free_beam` | tip deflection relative to the centre | 9.04919e-05 | 0.02 | Computed Timoshenko beam formula in this file |
 | `ex_laminate_matches_isotropic` | maximum relative compliance, mass, or tip-displacement difference | 0 | 1e-08 | same-run hm.isotropic solution; identical isotropic CLT constitutive law |
 | `ex_mass_and_cg` | maximum absolute residual across uniform and graded exact mass/CG | 0 | 1e-10 | Closed-form area integrals computed in this file |
 | `ex_optimal_thickness_taper` | optimiser-recovered exponent p in t(x) = A ((L-x)/L)**p | 1 | 0.05 | Computed in this file: minimising int M^2/t^3 at fixed int t gives t proportional to sqrt(M), hence (L-x) under uniform load; cross-checked against a direct 1-D SLSQP solve to 2.4e-6 |

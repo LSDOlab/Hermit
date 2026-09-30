@@ -10,7 +10,7 @@ state-based output functions.
 | domain | `ShellDomain`, `read_mesh` |
 | fields | `constant`, `from_nodal`, `from_cells`, `from_function`, `from_coeffs`, `as_field`, `field_fn`, `interpolate`, `project` |
 | material | `isotropic`, `laminate`, `composite`, `thickness_only`; `fiber_angle`, `fiber_direction`; `Layup` |
-| loads | `pressure`, `traction`, `moment`, `inertial_load`; `edge_pressure`, `edge_traction`, `edge_moment`; `point_load`, `load_vector` |
+| loads | `pressure`, `traction`, `moment`, `inertial_load`; `edge_pressure`, `edge_traction`, `edge_moment`; `point_load`, `load_vector`; `inertia_relief` |
 | boundary conditions | `clamp`, `pin`, `symmetry`, `gauge`; `near`, `on_plane` |
 | geometry | `geometry` |
 | solve | `solve` → `ShellState` |

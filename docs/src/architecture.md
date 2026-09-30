@@ -44,7 +44,9 @@ ABD matrices remain in laminate axes and an `Orientation` from `hm.fiber_angle` 
 `hm.load_vector` each return composable `Loads`; `hm.edge_pressure`, `hm.edge_traction`, and
 `hm.edge_moment` apply the same loads per unit length on exterior facets selected by
 a `where=` predicate. Every load term reaches the residual and the compliance form on
-its own space, so mixing spaces costs no interpolation.
+its own space, so mixing spaces costs no interpolation. `hm.inertia_relief` returns
+the `inertial_load` that balances a free structure's `Loads`; it adds nothing to the
+solve itself.
 
 Use `hm.clamp`, `hm.pin`, `hm.symmetry`, and `hm.gauge` for boundary conditions. Each
 takes `value=` for a non-zero prescribed displacement or rotation, and `+` merges
