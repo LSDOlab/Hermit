@@ -74,7 +74,13 @@ def test_prescribed_bending_patch_strong(tri_mesh, recorder):
     state = hm.solve(dom, mat, loads,
                      hm.clamp(dom, where=_all_boundary, method="strong", value=bending_state))
     _, curvature, shear = hm.strain_fields(state, space=("DG", 0), method="interpolate", frame="global")
-    assert np.max(np.abs(_field_values(curvature) + [kxx, kyy, 0.0, 0.0, 0.0, 2 * kxy])) < 2e-12
+    # Round-off, relative to the prescribed curvature: this thin plate's bending
+    # stiffness is ~1e3 below its membrane stiffness, so the solve leaves ~1e-12 here
+    # (1.3e-12 locally on DOLFINx 0.11, 2.03e-12 on CI's 0.9, which failed a fixed
+    # 2e-12). Prescribing rx 10% off the exact state gives ~1e-1 here, so 1e-9 * kmax
+    # still separates round-off from a failed patch by eight orders.
+    kmax = max(abs(kxx), abs(kyy), abs(kxy))
+    assert np.max(np.abs(_field_values(curvature) + [kxx, kyy, 0.0, 0.0, 0.0, 2 * kxy])) < 1e-9 * kmax
     assert np.max(np.abs(_field_values(shear))) < 2e-12
 
 
