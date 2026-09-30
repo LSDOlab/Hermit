@@ -8,6 +8,7 @@ Port of ``ElasticModelShapeOpt`` from femo dev_coupling. Geometry sensitivity is
 from dolfinx.fem import Constant, Function, functionspace
 from ufl import (
     CellDiameter,
+    SpatialCoordinate,
     TestFunction,
     as_tensor,
     as_vector,
@@ -214,7 +215,8 @@ class ElasticModel:
         ``hm.clamp(...) + hm.symmetry(...)``); with it omitted, the single
         ``(dss, dSS, bc_dof_mask)`` triple is used.
 
-        ``load_terms``, given, is a list of ``(kind, Function)`` pairs: each
+        ``load_terms``, given, is a list of ``(kind, coeff)`` pairs (``coeff`` as in
+        :func:`load_work`, optionally followed by a measure): each
         contributes its own residual term, on its own space, in place of the
         fixed-space ``f``/``m`` coefficients ``load_terms=None`` (the default) uses.
         An empty list is valid (no distributed term -- e.g. a point-load-only
@@ -242,16 +244,10 @@ class ElasticModel:
         return res
 
     def _load_term_residual(self, kind, func, measure=dx):
-        """One load term's residual contribution -- the work conjugate
-        ``ShellPDE.compliance_form``'s ``loads`` branch also emits, so the two never
-        drift apart (see that method's docstring)."""
-        if kind == "traction":
-            return inner(func, self.du_mid) * measure
-        if kind == "moment":
-            return inner(func, self.dtheta) * measure
-        if kind == "pressure":
-            return func * dot(self.E2, self.du_mid) * measure
-        raise ValueError(f"unknown load kind {kind!r}")  # pragma: no cover
+        """One load term's residual contribution -- :func:`load_work` on the test
+        function, the same helper ``ShellPDE.compliance_form`` evaluates on the
+        solution, so the two never drift apart."""
+        return load_work(kind, func, self.du_mid, self.dtheta, self.E2, measure)
 
     def _penalty_residual(self, u, v, g, terms, targets=None):
         """Sum the penalty contribution of each ``(dss, dSS, bc_dof_mask)`` in
@@ -285,6 +281,39 @@ class ElasticModel:
         for p in pieces[1:]:
             res = res + p
         return res
+
+
+def inertial_body_force(thickness, density, acceleration):
+    """Force per unit area ``rho * t * (a' + alpha x X)`` of an ``"inertial"`` term.
+
+    ``acceleration`` is a ``(6,)`` coefficient ``(a', alpha)``: ``alpha`` is the
+    angular acceleration and ``a'`` the acceleration at the global origin (the caller
+    folds any other reference point in). ``X`` is the live ``SpatialCoordinate``, so
+    the lever arm follows the mesh.
+    """
+    X = SpatialCoordinate(thickness.function_space.mesh)
+    a = as_vector([acceleration[i] for i in range(3)])
+    alpha = as_vector([acceleration[i] for i in range(3, 6)])
+    return density * thickness * (a + cross(alpha, X))
+
+
+def load_work(kind, coeff, u_mid, theta, E2, measure=dx):
+    """Virtual work of one load term on the displacement pair ``(u_mid, theta)``.
+
+    The single definition of what each load kind means: the residual evaluates it on
+    the test function and the compliance on the solution. ``coeff`` is one
+    ``Function`` for ``"traction"`` / ``"moment"`` / ``"pressure"``, and the
+    ``(thickness, density, acceleration)`` triple for ``"inertial"``.
+    """
+    if kind == "traction":
+        return inner(coeff, u_mid) * measure
+    if kind == "moment":
+        return inner(coeff, theta) * measure
+    if kind == "pressure":
+        return coeff * dot(E2, u_mid) * measure
+    if kind == "inertial":
+        return inner(inertial_body_force(*coeff), u_mid) * measure
+    raise ValueError(f"unknown load kind {kind!r}")  # pragma: no cover
 
 
 def _contract1(vec3, E01):

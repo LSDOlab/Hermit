@@ -135,8 +135,26 @@ def _loads_key(loads):
     two different compositions would silently apply the wrong physics."""
     if loads is None:
         return None
-    return tuple((item[1], normalize_space(item[2]), id(item[3]) if len(item) == 5 else None)
+    return tuple((item[1], tuple(normalize_space(sp_) for _, sp_ in _term_coefficients(item)),
+                  id(item[3]) if len(item) == 5 else None)
                  for item in loads)
+
+
+def _term_coefficients(item):
+    """``[(argname, space), ...]`` -- the coefficients one load-spec item declares.
+
+    An ``"inertial"`` item is ``(name, "inertial", ((argname, space), ...))`` with
+    its thickness, density and acceleration coefficients, in that order; every other
+    kind is a single ``(argname, kind, space[, ds, facets])`` coefficient."""
+    if item[1] == "inertial":
+        return list(item[2])
+    return [(item[0], item[2])]
+
+
+def _term_coeff(funcs, item):
+    """The ``coeff`` argument of ``load_work`` for one load-spec item."""
+    names = [n for n, _ in _term_coefficients(item)]
+    return tuple(funcs[n] for n in names) if item[1] == "inertial" else funcs[names[0]]
 
 
 class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
@@ -154,7 +172,8 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
         keeps the fixed-space Functions.
 
         ``loads``, given, is a list of ``(argname, kind, space)`` triples: ``kind`` in
-        ``"traction"`` / ``"moment"`` / ``"pressure"``, each routed through
+        ``"traction"`` / ``"moment"`` / ``"pressure"`` (an ``"inertial"`` item lists
+        several coefficients instead -- see ``_term_coefficients``), each routed through
         ``pde.coefficient(argname, space)`` and contributing its own
         residual/compliance term (see ``ElasticModel.weak_residual`` /
         ``ShellPDE.compliance_form``'s ``load_terms``), rather than being reduced onto
@@ -194,8 +213,8 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
             oname, ospace = orientation
             self._funcs[oname] = pde.coefficient(oname, ospace)
         for item in (loads or ()):
-            argname, kind, space = item[:3]
-            self._funcs[argname] = pde.coefficient(argname, space)
+            for argname, space in _term_coefficients(item):
+                self._funcs[argname] = pde.coefficient(argname, space)
 
         # residual / tangent forms + coordinate space are arg-independent (for a given
         # structural key) and built on the PDE's persistent Functions -> memoize
@@ -212,8 +231,8 @@ class ShellSolveOp(csdl.experimental.CustomImplicitOperation):
             # list selects the per-term path with that many distributed terms
             # (possibly zero -- a point-load-only Loads has none).
             load_terms = None if loads is None else [
-                (item[1], self._funcs[item[0]]) if len(item) == 3
-                else (item[1], self._funcs[item[0]], item[3])
+                (item[1], _term_coeff(self._funcs, item)) if len(item) == 3
+                else (item[1], _term_coeff(self._funcs, item), item[3])
                 for item in loads
             ]
             residual = pde.residual_form(

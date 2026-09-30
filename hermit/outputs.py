@@ -119,6 +119,11 @@ def compliance(state):
             name = f"edge_{kind}_{i}"
             edge_specs.append((name, kind, edge.field.space, edge.ds, edge.facets))
             edge_fields[name] = edge.field
+    for i, term in enumerate(state.loads.inertial_terms):
+        coeffs = term.coefficients(f"inertial_{i}")
+        for n, sp_, v in coeffs:
+            args.append(n); values[n] = v; coefficients[n] = sp_
+        terms.append(("inertial", tuple(pde.coefficient(n, sp_) for n, sp_, _ in coeffs)))
     # A compliance form has no BC terms, but several edge loads still need one
     # shared tagged ds object (the same DOLFINx constraint as the residual).
     _, edge_specs = _share_edge_and_penalty_ds(pde, BCData(penalty=False), edge_specs)

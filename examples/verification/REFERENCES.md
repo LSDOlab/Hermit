@@ -10,6 +10,7 @@ constant, which needs a real citation and an independent check).
 | benchmark | quantity | reference | tolerance | source |
 |---|---|---|---|---|
 | `ex_analytic_compliance_gradient` | dC/dt (CSDL) / (-3 C/t) | 1 | 0.01 | Euler--Bernoulli pure-bending scaling: D = E t^3 / [12(1-nu^2)] |
+| `ex_cantilever_self_weight` | vertical displacement at the tip-edge midpoint | 0.00851835 | 0.02 | Computed Timoshenko beam formula in this file |
 | `ex_cantilever_tip_load` | vertical displacement at the tip-edge midpoint | 0.000578843 | 0.02 | Computed Timoshenko beam formula in this file |
 | `ex_cantilever_tip_moment` | maximum relative error of tip deflection and y rotation | 0 | 1e-07 | Computed Euler-Bernoulli constant-curvature formulas in this file |
 | `ex_cantilever_uniform_pressure` | vertical displacement at the tip-edge midpoint | 0.00868333 | 0.02 | Computed Timoshenko beam formula in this file |

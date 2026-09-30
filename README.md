@@ -54,8 +54,9 @@ consume fewer inputs than the FE solve — build a thickness-only material with
   `thickness_only` for a surrogate. `fiber_direction` /
   `fiber_angle` orient the laminate; the `Tε(θ)` rotation happens **inside the form**, so
   it is differentiable and correct on a continuous orientation field.
-- **Loads:** `pressure` (follows the shell normal), `traction`, `moment`, `point_load`,
-  or a direct generalized `load_vector`; `edge_pressure` / `edge_traction` /
+- **Loads:** `pressure` (follows the shell normal), `traction`, `moment`,
+  `inertial_load` (self weight / manoeuvre loads from the material's mass),
+  `point_load`, or a direct generalized `load_vector`; `edge_pressure` / `edge_traction` /
   `edge_moment` apply the same loads per unit length on exterior facets a `where=`
   predicate selects.
 - **Boundary conditions:** `clamp` / `pin` / `symmetry` / `gauge`, penalty (default) or

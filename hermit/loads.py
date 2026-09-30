@@ -1,7 +1,8 @@
 """``Loads`` -- distributed, edge and point loads; ``a + b`` composes them.
 
 Each builder returns a :class:`Loads` carrying one term. ``pressure`` / ``traction``
-/ ``moment`` are distributed over the shell surface; ``edge_pressure`` /
+/ ``moment`` are distributed over the shell surface; ``inertial_load`` is the
+d'Alembert / gravity load of the structure's own mass; ``edge_pressure`` /
 ``edge_traction`` / ``edge_moment`` act on selected exterior facets; ``point_load``
 is a consistent (weak Dirac) point load; ``load_vector`` is a direct generalised RHS
 in ``domain.W`` dof ordering.
@@ -43,6 +44,30 @@ class _EdgeLoadTerm:
     field: Field
     ds: object
     facets: np.ndarray
+
+
+@dataclass(frozen=True)
+class _InertialTerm:
+    """The material's thickness and density, and a ``(6,)`` acceleration.
+
+    ``acceleration`` is ``(a', alpha)``: ``alpha`` the angular acceleration and
+    ``a'`` the acceleration at the global origin, the builder's ``about`` already
+    folded in (see :func:`inertial_load`).
+    """
+    thickness: Field
+    density: Field
+    acceleration: csdl.Variable
+
+    def coefficients(self, name):
+        """``[(argname, space, coeffs), ...]`` -- thickness, density, acceleration --
+        the solve arguments and compliance coefficients this term declares. The
+        acceleration is a spatially constant ``("DG", 0, (6,))`` coefficient."""
+        n_cells = self.thickness.domain.n_cells
+        accel = csdl.reshape(csdl.expand(self.acceleration, (n_cells, 6), action="i->ai"),
+                             (n_cells * 6,))
+        return [(f"{name}_thickness", self.thickness.space, self.thickness.coeffs),
+                (f"{name}_density", self.density.space, self.density.coeffs),
+                (f"{name}_acceleration", ("DG", 0, (6,)), accel)]
 
 
 def _edge_term(domain, value, space, *, vector, where, name):
@@ -97,9 +122,9 @@ class Loads:
 
     Build one with :func:`pressure`, :func:`traction`, :func:`moment`,
     :func:`edge_pressure`, :func:`edge_traction`, :func:`edge_moment`,
-    :func:`point_load` or :func:`load_vector` rather than calling this constructor
-    directly. ``a + b`` merges two ``Loads`` on the same domain, concatenating the
-    term lists and summing the direct right-hand sides.
+    :func:`inertial_load`, :func:`point_load` or :func:`load_vector` rather than
+    calling this constructor directly. ``a + b`` merges two ``Loads`` on the same
+    domain, concatenating the term lists and summing the direct right-hand sides.
 
     Parameters
     ----------
@@ -110,6 +135,10 @@ class Loads:
         Distributed scalar fields, acting along the shell normal.
     edge_traction_terms, edge_moment_terms, edge_pressure_terms : sequence, optional
         Edge terms, each pairing a field with the exterior-facet measure it acts on.
+    inertial_terms : sequence, optional
+        Inertial terms, each holding a material's thickness and density fields and
+        an acceleration. A surrogate solve that reads the load terms directly must
+        handle these too.
     direct : csdl.Variable, optional
         A generalised right-hand side in ``domain.W`` dof ordering.
 
@@ -119,7 +148,8 @@ class Loads:
     """
 
     def __init__(self, domain, *, traction_terms=(), moment_terms=(), pressure_terms=(),
-                edge_traction_terms=(), edge_moment_terms=(), edge_pressure_terms=(), direct=None):
+                edge_traction_terms=(), edge_moment_terms=(), edge_pressure_terms=(),
+                inertial_terms=(), direct=None):
         self.domain = domain
         self.traction_terms = list(traction_terms)   # list[Field], each (.., (3,))
         self.moment_terms = list(moment_terms)        # list[Field], each (.., (3,))
@@ -127,6 +157,7 @@ class Loads:
         self.edge_traction_terms = list(edge_traction_terms)  # list[_EdgeLoadTerm]
         self.edge_moment_terms = list(edge_moment_terms)      # list[_EdgeLoadTerm]
         self.edge_pressure_terms = list(edge_pressure_terms)  # list[_EdgeLoadTerm]
+        self.inertial_terms = list(inertial_terms)            # list[_InertialTerm]
         self.direct = direct                           # csdl.Variable (ndof_W,) | None
 
     def __add__(self, other):
@@ -146,6 +177,7 @@ class Loads:
                     edge_traction_terms=self.edge_traction_terms + other.edge_traction_terms,
                     edge_moment_terms=self.edge_moment_terms + other.edge_moment_terms,
                     edge_pressure_terms=self.edge_pressure_terms + other.edge_pressure_terms,
+                    inertial_terms=self.inertial_terms + other.inertial_terms,
                     direct=direct)
 
     __radd__ = __add__
@@ -155,8 +187,8 @@ class Loads:
         """Sum the traction and pressure terms onto one space.
 
         Pressure is converted to a traction with a numpy snapshot of the reference
-        normal. :func:`~hermit.solve` does not use this -- it takes each term
-        directly, with the live normal.
+        normal. Inertial terms are not included. :func:`~hermit.solve` does not use
+        this -- it takes each term directly, with the live normal.
 
         Parameters
         ----------
@@ -215,8 +247,8 @@ def traction(domain, t, *, space=("Lagrange", 1)) -> Loads:
     """Distributed force per unit area, in global components.
 
     Contributes ``int t . du dx`` to the residual. Unlike :func:`pressure` this
-    never touches the shell normal, so it is the right choice for a body force such
-    as self weight on a curved surface.
+    never touches the shell normal. For the weight of the structure itself use
+    :func:`inertial_load`, which follows the thickness and density.
 
     Parameters
     ----------
@@ -312,6 +344,81 @@ def pressure(domain, p, *, space=("DG", 0)) -> Loads:
         raise ValueError(f"pressure: space must be scalar, got value_shape {sp_[2]}")
     p_field = p if isinstance(p, Field) else as_field_user_order(domain, p, sp_)
     return Loads(domain, pressure_terms=[p_field])
+
+
+def _as_vec3(value, name):
+    """A ``(3,)`` ``csdl.Variable`` from a Variable or array_like."""
+    v = value if isinstance(value, csdl.Variable) else csdl.Variable(value=np.asarray(value, dtype=float))
+    if int(np.prod(v.shape)) != 3:
+        raise ValueError(f"inertial_load: {name} must have 3 components, got shape {v.shape}")
+    return v if v.shape == (3,) else csdl.reshape(v, (3,))
+
+
+def inertial_load(domain, material, *, acceleration, angular_acceleration=None,
+                  about=None) -> Loads:
+    """The load of the structure's own mass in an accelerating frame.
+
+    Force per unit area ``density * thickness * (a + alpha x (x - about))``, with
+    ``a = acceleration`` and ``alpha = angular_acceleration``, taken from
+    ``material``'s own thickness and density fields on whatever spaces they were
+    built on. The resultant is exactly ``hm.mass(state) * a`` for a uniform ``a``.
+
+    ``acceleration`` is the load per unit mass, with the sign of gravity: pass
+    ``[0, 0, -9.81]`` for self weight and ``n * [0, 0, -9.81]`` for an ``n``-g
+    manoeuvre. For a body accelerating at ``a_body`` under gravity ``g`` it is
+    ``g - a_body`` (the d'Alembert force per unit mass).
+
+    Parameters
+    ----------
+    domain : ShellDomain
+    material : Material
+        Supplies ``thickness`` and ``density``; a :func:`~hermit.thickness_only`
+        material works too. It should be the material passed to
+        :func:`~hermit.solve`, or the load describes a different structure.
+    acceleration : csdl.Variable or array_like
+        ``(3,)`` load per unit mass, in global components.
+    angular_acceleration : csdl.Variable or array_like, optional
+        ``(3,)`` angular acceleration, same sign convention. Default zero.
+    about : array_like, optional
+        ``(3,)`` point at which the load per unit mass equals ``acceleration``.
+        Default the global origin. Fixed, not differentiable.
+
+    Returns
+    -------
+    Loads
+
+    Raises
+    ------
+    ValueError
+        If ``material`` was built on a different domain, or if an acceleration does
+        not have three components.
+
+    Notes
+    -----
+    Differentiable in both accelerations, the thickness and density fields, and the
+    mesh coordinates. The mass is the shell's translational mass only; the rotary
+    inertia of the thickness (``density * thickness**3 / 12``) is neglected, as in
+    :func:`~hermit.mass`.
+
+    Examples
+    --------
+    >>> loads = hm.pressure(domain, p) + hm.inertial_load(
+    ...     domain, material, acceleration=[0.0, 0.0, -2.5 * 9.81])
+    """
+    if material.domain is not domain:
+        raise ValueError("inertial_load: material must be built against this exact ShellDomain")
+    a = _as_vec3(acceleration, "acceleration")
+    if angular_acceleration is None:
+        alpha = csdl.Variable(value=np.zeros(3))
+    else:
+        alpha = _as_vec3(angular_acceleration, "angular_acceleration")
+    if about is not None:
+        # a + alpha x (x - p) = (a - alpha x p) + alpha x x, and -alpha x p = [p]x alpha
+        p = np.asarray(about, dtype=float).reshape(3)
+        skew = np.array([[0.0, -p[2], p[1]], [p[2], 0.0, -p[0]], [-p[1], p[0], 0.0]])
+        a = a + csdl.matvec(csdl.Variable(value=skew), alpha)
+    term = _InertialTerm(material.thickness, material.density, csdl.concatenate((a, alpha)))
+    return Loads(domain, inertial_terms=[term])
 
 
 def edge_traction(domain, t, *, where, space=("Lagrange", 1)) -> Loads:
@@ -517,8 +624,11 @@ def point_load(domain, *, at, force=None, moment=None) -> Loads:
 
     Notes
     -----
-    Differentiable in ``force`` and ``moment``, but **not** in ``at`` or the mesh
-    coordinates: the containing cell is fixed at construction.
+    Differentiable in ``force`` and ``moment``, but **not** in ``at``: the
+    containing cell and the point's reference coordinates in it are fixed at
+    construction. Under a mesh perturbation the load therefore stays on the same
+    material point, and since the basis values there do not depend on the node
+    positions, its right-hand side has an exactly zero mesh derivative.
     """
     if force is None and moment is None:
         raise ValueError("point_load needs force= and/or moment=")

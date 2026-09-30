@@ -40,8 +40,8 @@ collocation. `hm.project` is the geometry-dependent L2 alternative.
 ABD matrices remain in laminate axes and an `Orientation` from `hm.fiber_angle` or
 `hm.fiber_direction` is consumed inside the shell form.
 
-`hm.pressure`, `hm.traction`, `hm.moment`, `hm.point_load`, and `hm.load_vector` each
-return composable `Loads`; `hm.edge_pressure`, `hm.edge_traction`, and
+`hm.pressure`, `hm.traction`, `hm.moment`, `hm.inertial_load`, `hm.point_load`, and
+`hm.load_vector` each return composable `Loads`; `hm.edge_pressure`, `hm.edge_traction`, and
 `hm.edge_moment` apply the same loads per unit length on exterior facets selected by
 a `where=` predicate. Every load term reaches the residual and the compliance form on
 its own space, so mixing spaces costs no interpolation.

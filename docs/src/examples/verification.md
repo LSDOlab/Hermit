@@ -82,6 +82,7 @@ The reference is a closed form the example evaluates itself.
 |---|---|---|
 | `ex_cantilever_tip_load` | tip deflection | Timoshenko beam formula, computed |
 | `ex_cantilever_tip_moment` | tip deflection and rotation | Euler–Bernoulli constant curvature, computed |
+| `ex_cantilever_self_weight` | tip deflection under `inertial_load` | Timoshenko beam formula, computed |
 | `ex_cantilever_uniform_pressure` | tip deflection | Timoshenko beam formula, computed |
 | `ex_ss_plate_uniform` | centre deflection | Kirchhoff–Love Navier double series, 801 terms/direction |
 | `ex_ss_plate_sinusoidal` | centre deflection | Kirchhoff–Love single Navier mode |

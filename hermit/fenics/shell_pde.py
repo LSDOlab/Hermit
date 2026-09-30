@@ -10,7 +10,8 @@ import ufl
 from dolfinx.fem import Constant, Function, assemble_scalar, form, functionspace
 from dolfinx.fem.petsc import assemble_matrix
 
-from .elastic_model import ElasticModel
+from .elastic_model import ElasticModel, load_work
+from .kinematics import local_basis_inplane
 from .material import ABDHolder
 from .spaces import make_space, normalize_space, state_space
 from .stress import ShellStressRM
@@ -165,22 +166,12 @@ class ShellPDE:
         u_mid, theta = ufl.split(self.w)
         if loads is None:
             return ufl.inner(u_mid, self.f) * ufl.dx + ufl.inner(theta, self.m) * ufl.dx
+        E2 = local_basis_inplane(self.mesh)[2]
         total = None
-        E2 = None
         for item in loads:
             kind, func = item[:2]
             measure = ufl.dx if len(item) == 2 else item[2]
-            if kind == "traction":
-                term = ufl.inner(u_mid, func) * measure
-            elif kind == "moment":
-                term = ufl.inner(theta, func) * measure
-            elif kind == "pressure":
-                if E2 is None:
-                    from .kinematics import local_basis_inplane
-                    E2 = local_basis_inplane(self.mesh)[2]
-                term = func * ufl.dot(E2, u_mid) * measure
-            else:  # pragma: no cover
-                raise ValueError(f"unknown load kind {kind!r}")
+            term = load_work(kind, func, u_mid, theta, E2, measure)
             total = term if total is None else total + term
         return total if total is not None else Constant(self.mesh, 0.0) * ufl.dx
 

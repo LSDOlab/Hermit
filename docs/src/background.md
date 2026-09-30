@@ -111,9 +111,19 @@ reaches the residual on its own FE space with no interpolation between terms.
   on a badly wound import, a uniform pressure would silently become a
   sign-alternating load.
 - `hm.traction(domain, t)` --- force per unit area in global components. This never
-  touches the normal, so it is the correct choice for a body force such as self
-  weight on a curved roof, where the two are very different loads.
+  touches the normal, so on a curved roof it is a very different load from a
+  pressure of the same magnitude.
 - `hm.moment(domain, m)` --- moment per unit area, conjugate to the director rotation.
+- `hm.inertial_load(domain, material, acceleration=...)` --- the structure's own
+  mass in an accelerating frame: force per unit area
+  $\rho t\,(\mathbf{a} + \boldsymbol{\alpha}\times(\mathbf{x}-\mathbf{x}_0))$,
+  from the material's thickness and density on whatever spaces they were built on.
+  `acceleration` is the load per unit mass with the sign of gravity, so
+  `[0, 0, -9.81]` is self weight and `2.5 * [0, 0, -9.81]` a 2.5 g manoeuvre;
+  `angular_acceleration=` and `about=` add a rigid rotation. Its resultant is exactly
+  `hm.mass` times $\mathbf{a}$, and it is differentiable in the accelerations, the
+  thickness and density, and the mesh coordinates. The rotary inertia of the
+  thickness is neglected, as in `hm.mass`.
 
 ### On an edge
 
@@ -135,7 +145,9 @@ other; the tagged facet measure is structural form data and is fixed at construc
 the containing cell is located, the state-space basis is evaluated there, and the
 result is scattered into the right-hand side --- the weak form of a Dirac delta, so
 `at` need not be a mesh vertex. It is differentiable in `force` and `moment`, but not
-in `at` or the mesh coordinates. `hm.load_vector(domain, vec)` supplies a generalized
+in `at`. Under a mesh perturbation the load stays attached to the same material
+point, so its right-hand side does not depend on the mesh coordinates at all and the
+shape derivative is exact; a load pinned to a fixed spatial point is not supported. `hm.load_vector(domain, vec)` supplies a generalized
 right-hand side directly, in `domain.W` dof order.
 
 ## Boundary conditions

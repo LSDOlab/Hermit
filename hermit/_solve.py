@@ -120,6 +120,13 @@ def _load_terms(loads):
     _add_edge(loads.edge_traction_terms, "traction")
     _add_edge(loads.edge_moment_terms, "moment")
     _add_edge(loads.edge_pressure_terms, "pressure")
+    # An inertial term is several coefficients (thickness, density, acceleration),
+    # each its own differentiable solve argument.
+    for i, term in enumerate(loads.inertial_terms):
+        coeffs = term.coefficients(f"inertial_{i}")
+        arg_names.extend(n for n, _, _ in coeffs)
+        spec.append((f"inertial_{i}", "inertial", tuple((n, sp_) for n, sp_, _ in coeffs)))
+        values.update({n: v for n, _, v in coeffs})
     return arg_names, spec, values
 
 
