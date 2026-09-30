@@ -120,8 +120,10 @@ reaches the residual on its own FE space with no interpolation between terms.
   from the material's thickness and density on whatever spaces they were built on.
   `acceleration` is the load per unit mass with the sign of gravity, so
   `[0, 0, -9.81]` is self weight and `2.5 * [0, 0, -9.81]` a 2.5 g manoeuvre;
-  `angular_acceleration=` and `about=` add a rigid rotation. Its resultant is exactly
-  `hm.mass` times $\mathbf{a}$, and it is differentiable in the accelerations, the
+  `angular_acceleration=` and `about=` add a rigid rotation. Its force resultant is
+  exactly $m\,\mathbf{a} + \boldsymbol{\alpha}\times m(\mathbf{x}_{cg}-\mathbf{x}_0)$,
+  with $m$ = `hm.mass` and $\mathbf{x}_{cg}$ = `hm.center_of_gravity` --- just
+  $m\,\mathbf{a}$ without an angular part --- and it is differentiable in the accelerations, the
   thickness and density, and the mesh coordinates. The rotary inertia of the
   thickness is neglected, as in `hm.mass`.
 
