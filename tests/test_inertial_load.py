@@ -8,6 +8,7 @@ with other loads (including a second inertial term); and its adjoint derivatives
 match finite differences in every input, the mesh coordinates included.
 """
 
+import functools
 import pathlib
 import sys
 
@@ -135,11 +136,20 @@ def test_composes_linearly_with_other_loads(recorder):
         2.0 * float(hm.elastic_energy(together).value[0]), rel=1e-9)
 
 
+@functools.cache
+def _fd_mesh():
+    """One mesh for every finite-difference evaluation. Each solve on a *fresh* mesh
+    leaks ~5 MPI contexts that outlive the mesh (see test_cleanup.py), and the suite
+    runs in one process under MPICH's 2048-context limit; repeat solves on one mesh
+    leak none."""
+    return rect_plate(L, WIDTH, 6, 3, cell="triangle")
+
+
 def _compliance_and_gradients(params, *, derivative):
     """Compliance of a cantilever under pressure plus an inertial load with angular
     part, and its derivatives in every inertial input and a shape perturbation."""
     rec = csdl.Recorder(inline=True); rec.start()
-    domain = _plate(6, 3, cell="triangle")
+    domain = hm.ShellDomain(_fd_mesh())
     x = domain.node_coords
     t_scale = csdl.Variable(value=params["t"], name="t")
     rho = csdl.Variable(value=params["rho"], name="rho")
