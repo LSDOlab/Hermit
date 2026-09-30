@@ -2,7 +2,7 @@ schema_version: 1
 
 package:
   name: hermit
-  version: "0.1.0"
+  version: "0.1.1"
 
 source:
   path: ..
