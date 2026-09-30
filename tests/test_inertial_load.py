@@ -197,6 +197,46 @@ def test_derivatives_match_finite_differences():
         np.testing.assert_allclose(grads[name], fd, rtol=1e-5, atol=1e-8 * np.max(np.abs(fd)))
 
 
+def _shared_coefficient_compliance(t_value, p_value, *, derivative):
+    """Two inertial terms reading one material's thickness and density, and one
+    pressure Field used twice: every op sees the same csdl.Variable under two
+    argument names."""
+    rec = csdl.Recorder(inline=True); rec.start()
+    domain = hm.ShellDomain(_fd_mesh())
+    t = csdl.Variable(value=t_value, name="t")
+    pv = csdl.Variable(value=p_value, name="p")
+    material = hm.isotropic(domain, E=E, nu=NU, thickness=t * csdl.Variable(value=0.2), density=3.0)
+    pressure = hm.pressure(domain, hm.from_cells(domain, pv * csdl.Variable(value=np.ones(domain.n_cells))))
+    loads = (hm.inertial_load(domain, material, acceleration=G)
+             + hm.inertial_load(domain, material, acceleration=[0.0, 0.0, -1.5 * 9.81])
+             + pressure + pressure)
+    state = hm.solve(domain, material, loads, _clamp(domain))
+    c = hm.compliance(state)
+    value, grads = float(c.value[0]), None
+    if derivative:
+        totals = csdl.experimental.PySimulator(rec).compute_totals([c], [t, pv])
+        grads = (float(np.ravel(totals[c, t])[0]), float(np.ravel(totals[c, pv])[0]))
+    rec.stop()
+    return value, grads
+
+
+def test_terms_sharing_a_coefficient_differentiate():
+    """csdl keys op inputs by Variable, so declaring one Variable under two names
+    kept only one of them and reverse mode raised KeyError -- for gravity plus a
+    manoeuvre load, loads + inertia_relief, or p + p. Forward values were right."""
+    _, (dt, dp) = _shared_coefficient_compliance(
+        1.0, 20.0, derivative=True)
+    h = 1e-4
+    fd_t = (_shared_coefficient_compliance(1.0 + h, 20.0, derivative=False)[0]
+            - _shared_coefficient_compliance(1.0 - h, 20.0, derivative=False)[0]) / (2 * h)
+    h = 1e-3
+    fd_p = (_shared_coefficient_compliance(1.0, 20.0 + h, derivative=False)[0]
+            - _shared_coefficient_compliance(1.0, 20.0 - h, derivative=False)[0]) / (2 * h)
+    print(f"\nd/dt adjoint={dt:.10e} fd={fd_t:.10e}; d/dp adjoint={dp:.10e} fd={fd_p:.10e}")
+    assert dt == pytest.approx(fd_t, rel=1e-5)
+    assert dp == pytest.approx(fd_p, rel=1e-5)
+
+
 def test_rejects_material_from_another_domain(recorder):
     domain, other = _plate(), _plate()
     material = hm.isotropic(other, E=E, nu=NU, thickness=0.2, density=3.0)
